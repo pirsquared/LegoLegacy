@@ -29,8 +29,6 @@ _CONFIG = {
                                   # issues if we need more torque/lift power.
 }
 
-hub = InventorHub()
-
 class Lift(Motor):
     teeth_per_unit = 2.5
 
