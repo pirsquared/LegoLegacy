@@ -4,55 +4,20 @@ from pybricks.parameters import Button, Color, Direction, Port, Side, Stop
 from pybricks.robotics import DriveBase
 from pybricks.tools import wait, StopWatch, multitask, run_task
 from umath import pi
-
-
-_CONFIG = {
-    'ring_drive_teeth': 36,
-    'ring_outer_teeth': 140,  # 35 per quarter ring * 4
-    'lift_deg_teeth_ratio': 4.5,  # 45 degree turn on the lift motor results in
-                                  # 10 teeth on the lift rack which is one full
-                                  # length four piece.  The entire rack is six
-                                  # pieces or 60 teeth in which the range only
-                                  # goes to approximately 55 teeth. That trans-
-                                  # lates into approximately 225 degrees of
-                                  # motion on the drive motor.
-                                  # This is intended for speed but will run into
-                                  # issues if we need more torque/lift power.
-}
-
-def lift_unit_to_deg(number_of_units):
-    teeth_per_unit = 2.5  # From the ev3 rack pieces, 10 teeth/length 4
-    total_teeth = teeth_per_unit * number_of_units
-    return total_teeth * _CONFIG['lift_deg_teeth_ratio']
+from LegoLegacy import _CONFIG, Lift, Ring, DBase
 
 hub = InventorHub()
 
-class Lift(Motor):
-    teeth_per_unit = 2.5
-
-    def ratio(self):
-        return self.teeth_per_unit * _CONFIG['lift_deg_teeth_ratio']
-
-    def lift_units(self, **kwargs):
-        kwargs['rotation_angle'] *= self.ratio()
-        self.run_angle(**kwargs)
-
-class Ring(Motor):
-    def ratio(self):
-        return _CONFIG['ring_outer_teeth'] / _CONFIG['ring_drive_teeth']
-
-    def twist(self, **kwargs):
-        kwargs['rotation_angle'] *= self.ratio()
-        kwargs['speed'] *= self.ratio()
-        self.run_angle(**kwargs)
-    
-    def ring_angle(self):
-        return self.angle() / self.ratio()
-
 left_wheel = Motor(Port.A, Direction.COUNTERCLOCKWISE)
 rite_wheel = Motor(Port.F, Direction.CLOCKWISE)
-drive_base = DriveBase(left_wheel, rite_wheel, 56, 100)
+drive_base = DBase(
+    left_motor=left_wheel, right_motor=rite_wheel,
+    wheel_diameter=_CONFIG['wheel_diameter'],
+    axle_track=_CONFIG['wheel_base']
+)
 drive_base.use_gyro(True)
+# print(dir(drive_base))
+# drive_base.turn(360)
 
 ring = Ring(Port.C, Direction.CLOCKWISE)
 lift = Lift(Port.B, Direction.COUNTERCLOCKWISE)
@@ -123,15 +88,18 @@ rite_wheel.reset_angle(0)
 
 drive_base.reset()
 
-
-for _ in range(10):
-    drive_base.turn(36)
+observations = []
+for _ in range(40):
+    drive_base.turn(90)
 
     print(
         (rd:=rite_wheel.angle()*56*pi/360),
         (ld:=left_wheel.angle()*56*pi/360),
         (yaw:=hub.imu.heading()),
-        (rd-ld)*180/yaw/pi
+        (obs:=(rd-ld)*180/yaw/pi)
 
     )
+    observations.append(obs)
 
+
+# drive_base.straight(-100)
