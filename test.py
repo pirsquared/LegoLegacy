@@ -4,21 +4,14 @@ from pybricks.parameters import Button, Color, Direction, Port, Side, Stop
 from pybricks.robotics import DriveBase
 from pybricks.tools import wait, StopWatch, multitask, run_task
 from umath import pi
-from LegoLegacy import _CONFIG, Lift, Ring, DBase
+from LegoLegacy import Lift, Ring, Drive
 
 hub = InventorHub()
 
 left_wheel = Motor(Port.A, Direction.COUNTERCLOCKWISE)
 rite_wheel = Motor(Port.F, Direction.CLOCKWISE)
-drive_base = DBase(
-    left_motor=left_wheel, right_motor=rite_wheel,
-    wheel_diameter=_CONFIG['wheel_diameter'],
-    axle_track=_CONFIG['wheel_base']
-)
+drive_base = Drive(Port.A, Port.F)
 drive_base.use_gyro(True)
-# print(dir(drive_base))
-# drive_base.turn(360)
-
 ring = Ring(Port.C, Direction.CLOCKWISE)
 lift = Lift(Port.B, Direction.COUNTERCLOCKWISE)
 
