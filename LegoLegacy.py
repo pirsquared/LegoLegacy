@@ -11,7 +11,7 @@ _CONFIG = {
                                   # the angle of rotation for each motor and the
                                   # measured distance traveled by the robot.  The
                                   # test resulted in an estimated 54.2mm wheel dia.
-    'wheel_base': 145.3,          # The distance from the center of one wheel to
+    'wheel_base': 142.3,          # The distance from the center of one wheel to
                                   # the center of the other wheel is 18 peg
                                   # lengths.  With each peg length equal to 8mm
                                   # that's a total of 144mm.  However, we ran
@@ -20,6 +20,10 @@ _CONFIG = {
                                   # assumption that the wheels have a diameter
                                   # of 56mm and the heading angle.  The test
                                   # resulted in an estimated 145.3mm wheel base.
+                                  # New estimate with measure turn of 7160 degrees
+                                  # and left/right motors at 18_794/18_795 respectively
+                                  # using 54.2mm wheel_diameter is 142.27
+
     'ring_drive_teeth': 36,
     'ring_outer_teeth': 140,      # 35 per quarter ring * 4
     'lift_deg_teeth_ratio': 4.5,  # 45 degree turn on the lift motor results in
@@ -71,6 +75,13 @@ class Drive(DriveBase):
         self.settings(s_spd, s_acc, t_rate, t_acc)
         return result
 
+    def strait(self, distance, speed=200, acceleration=500, *args, **kwargs):
+        s_spd, s_acc, t_rate, t_acc = self.settings()
+        self.settings(speed, acceleration, t_rate, t_acc)
+        result = self.straight(distance, *args, **kwargs)
+        self.settings(s_spd, s_acc, t_rate, t_acc)
+        return result
+
 class Bot:
     def __init__(
             self,
@@ -82,6 +93,8 @@ class Bot:
             right_eye: Port,
             hub_type: type = _CONFIG['hub_class']
         ):
+        self.wheel_diameter = _CONFIG['wheel_diameter']
+        self.wheel_base = _CONFIG['wheel_base']
         self.hub = hub_type(
             top_side=_CONFIG['top_face_direction'],
             front_side=_CONFIG['front_face_direction']
@@ -96,9 +109,10 @@ class Bot:
         self.drive = Drive(
             self.left_motor,
             self.right_motor,
-            _CONFIG['wheel_diameter'],
-            _CONFIG['wheel_base']
+            self.wheel_diameter,
+            self.wheel_base
         )
+        self.drive.use_gyro(True)
         self.drive.heading_control.target_tolerances(10, 5)
 
     def twist(self, *args, **kwargs):
@@ -113,6 +127,27 @@ class Bot:
     def straight(self, *args, **kwargs):
         return self.drive.straight(*args, **kwargs)
 
+    def strait(self, *args, **kwargs):
+        return self.drive.strait(*args, **kwargs)
+
+    def left_angle(self):
+        return self.left_motor.angle()
+
+    def right_angle(self):
+        return self.right_motor.angle()
+
+    def wheel_ratio(self):
+        return self.wheel_diameter / self.wheel_base
+
+    def accu_turn(self, angle):
+        tolerance = 0.25
+        while abs(self.dead_head()-angle) > tolerance:
+            self.turn(angle-self.dead_head())
+        return self.drive.stop()
+
+    def dead_head(self):
+        return (self.left_angle()-self.right_angle()) / 2 * self.wheel_ratio()
+
     def twist_turn(self, angle, trn_rt=120, trn_acc=120):
         async def tt():
             await multitask(
@@ -120,4 +155,12 @@ class Bot:
                 self.twist(angle, trn_rt=trn_rt, trn_acc=trn_acc)
             )
         return run_task(tt())
+
+    def move_lift(self, move, lift, move_speed, lift_speed):
+        async def ml():
+            await multitask(
+                self.strait(move, speed=move_speed),
+                self.liftby(lift, speed=lift_speed)
+            )
+        return run_task(ml())
     
