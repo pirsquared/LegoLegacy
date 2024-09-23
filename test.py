@@ -1,6 +1,6 @@
 from pybricks.hubs import PrimeHub
-from pybricks.parameters import Port
-from pybricks.tools import multitask, run_task, 
+from pybricks.parameters import Port, Stop
+from pybricks.tools import multitask, run_task, wait
 from LegoLegacy import Bot
 
 bot = Bot(
@@ -24,5 +24,12 @@ bot = Bot(
 
 # bot.lift(4)
 # bot.lift(-4)
-bot.twist_turn(120)
-bot.twist_turn(-120)
+# bot.twist_turn(120)
+# bot.twist_turn(-120)
+
+bot.left_motor.reset_angle(0)
+bot.right_motor.reset_angle(0)
+# bot.drive.use_gyro(True)
+# bot.accu_turn(360)
+bot.move_lift(50, 10, move_speed=50, lift_speed=100)
+bot.move_lift(-50, -10, move_speed=50, lift_speed=100)
