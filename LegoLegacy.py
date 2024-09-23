@@ -5,6 +5,10 @@ from pybricks.robotics import DriveBase
 from pybricks.tools import wait, StopWatch, multitask, run_task
 from umath import pi
 
+def clear_console():
+    print("\x1b[H\x1b[2J", end="")
+
+
 _CONFIG = {
     'wheel_diameter': 54.2,       # The diameter of the wheels is 56mm.  However,
                                   # we ran a number of trials where we compared
@@ -101,6 +105,8 @@ class Bot:
         )
         self.left_motor = Motor(left_motor, Direction.COUNTERCLOCKWISE)
         self.right_motor = Motor(right_motor, Direction.CLOCKWISE)
+        self.left_motor.reset_angle(0)
+        self.right_motor.reset_angle(0)
         self.ring = Ring(ring_motor, Direction.CLOCKWISE)
         self.ring.control.target_tolerances(10, 5)
         self.lift = Lift(lift_motor, Direction.COUNTERCLOCKWISE)
@@ -136,8 +142,23 @@ class Bot:
     def right_angle(self):
         return self.right_motor.angle()
 
+    def wheel_circ(self):
+        return self.wheel_diameter * pi
+
     def wheel_ratio(self):
         return self.wheel_diameter / self.wheel_base
+
+    def drive_mean(self):
+        return (self.left_angle() + self.right_angle()) / 2
+
+    def drive_diff(self):
+        return (self.left_angle() - self.right_angle()) / 2
+
+    def dead_head(self):
+        return self.drive_diff() * self.wheel_ratio()
+
+    def dead_reck(self):        
+        return self.drive_mean() * self.wheel_circ() / 360
 
     def accu_turn(self, angle):
         tolerance = 0.25
@@ -145,8 +166,16 @@ class Bot:
             self.turn(angle-self.dead_head())
         return self.drive.stop()
 
-    def dead_head(self):
-        return (self.left_angle()-self.right_angle()) / 2 * self.wheel_ratio()
+    def accu_straight(self, distance):
+        tolerance = 0.25
+        start_position = self.dead_reck()
+        current_position = start_position
+        togo = distance
+        while abs(togo) > tolerance:
+            self.strait(togo, speed=50)
+            current_position = self.dead_reck()
+            togo = distance - (current_position-start_position)
+        return self.drive.stop()
 
     def twist_turn(self, angle, trn_rt=120, trn_acc=120):
         async def tt():
