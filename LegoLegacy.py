@@ -160,19 +160,24 @@ class Bot:
     def dead_reck(self):        
         return self.drive_mean() * self.wheel_circ() / 360
 
-    def accu_turn(self, angle):
-        tolerance = 0.25
-        while abs(self.dead_head()-angle) > tolerance:
-            self.turn(angle-self.dead_head())
+    def accu_turn(self, angle, trn_rt=90, tolerance=0.25):
+        start_angle = self.dead_head()
+        current_angle = start_angle
+        togo = angle
+        while abs(togo) > tolerance:
+            turn_rate = max(min(trn_rt, abs(togo)*5), 50)
+            self.turn(togo, trn_rt=turn_rate)
+            current_angle = self.dead_head()
+            togo = angle - (current_angle-start_angle)
         return self.drive.stop()
 
-    def accu_straight(self, distance):
-        tolerance = 0.25
+    def accu_straight(self, distance, speed=100, tolerance=0.25):
         start_position = self.dead_reck()
         current_position = start_position
         togo = distance
         while abs(togo) > tolerance:
-            self.strait(togo, speed=50)
+            modified_speed = max(min(speed, abs(togo)*5), 45)
+            self.strait(togo, speed=modified_speed)
             current_position = self.dead_reck()
             togo = distance - (current_position-start_position)
         return self.drive.stop()
