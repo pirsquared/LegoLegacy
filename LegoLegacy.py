@@ -3,7 +3,7 @@ from pybricks.pupdevices import Motor, ColorSensor, UltrasonicSensor
 from pybricks.parameters import Button, Color, Direction, Port, Side, Stop, Axis
 from pybricks.robotics import DriveBase
 from pybricks.tools import wait, StopWatch, multitask, run_task
-from umath import pi
+from umath import pi, sin
 
 def clear_console():
     print("\x1b[H\x1b[2J", end="")
@@ -50,9 +50,22 @@ class Lift(Motor):
     def ratio(self):
         return self.teeth_per_unit * _CONFIG['lift_deg_teeth_ratio']
 
-    def liftby(self, rotation_angle, speed=90, **kwargs):
-        rotation_angle *= self.ratio()
-        return self.run_angle(speed, rotation_angle, **kwargs)
+    def unit_to_deg(self, unit):
+        return unit * self.ratio()
+    
+    def deg_to_unit(self, deg):
+        return deg / self.ratio()
+
+    def unit(self):
+        return self.deg_to_unit(self.angle())
+    
+    def liftto(self, unit, speed=90, **kwargs):
+        return self.run_target(speed, self.unit_to_deg(unit), **kwargs)
+        
+    def liftby(self, unit, speed=90, **kwargs):
+        start = self.deg_to_unit(self.angle())
+        target = start + unit
+        return self.liftto(target, speed, **kwargs)
 
 class Ring(Motor):
     def ratio(self):
@@ -85,6 +98,9 @@ class Drive(DriveBase):
         result = self.straight(distance, *args, **kwargs)
         self.settings(s_spd, s_acc, t_rate, t_acc)
         return result
+    
+    def distance_to_angle(self, distance):
+        return distance * 360 / (pi * _CONFIG['wheel_diameter'])
 
 class Bot:
     def __init__(
@@ -126,6 +142,9 @@ class Bot:
 
     def liftby(self, *args, **kwargs):
         return self.lift.liftby(*args, **kwargs)
+
+    def liftto(self, *args, **kwargs):
+        return self.lift.liftto(*args, **kwargs)
 
     def turn(self, *args, **kwargs):
         return self.drive.tern(*args, **kwargs)
@@ -198,3 +217,24 @@ class Bot:
             )
         return run_task(ml())
     
+    def lift_sine_unit(self, speed, amplitude, duration, cycles=0.5):
+        watch = StopWatch()
+        start = watch.time()
+        time = 0
+        zero = self.lift.unit()
+        while time < duration:
+            time = watch.time() - start
+            theta = time / duration * pi * 2 * cycles
+            result = self.liftto(
+                amplitude * sin(theta) + zero, speed=speed, wait=False
+            )
+        return self.liftto(zero, speed=speed)
+
+    def move_lift_sine(self, move, speed, amplitude, duration, cycles=0.5):
+        move_speed = move / duration * 1000
+        async def mls():
+            await multitask(
+                self.strait(move, speed=move_speed),
+                self.lift_sine_unit(speed, amplitude, duration, cycles)
+            )
+        return run_task(mls())
