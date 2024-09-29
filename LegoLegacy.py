@@ -30,10 +30,10 @@ _CONFIG = {
 
     'ring_drive_teeth': 36,
     'ring_outer_teeth': 140,      # 35 per quarter ring * 4
-    'lift_deg_teeth_ratio': 4.5,  # 45 degree turn on the lift motor results in
+    'lift_deg_teeth_ratio': 7.5,  # 75 degree turn on the lift motor results in
                                   # 10 teeth on the lift rack which is one full
-                                  # length four piece.  The entire rack is six
-                                  # pieces or 60 teeth in which the range only
+                                  # length four piece.  The entire rack is sev
+                                  # pieces or 70 teeth in which the range only
                                   # goes to approximately 55 teeth. That trans-
                                   # lates into approximately 225 degrees of
                                   # motion on the drive motor.
@@ -217,24 +217,29 @@ class Bot:
             )
         return run_task(ml())
     
-    def lift_sine_unit(self, speed, amplitude, duration, cycles=0.5):
+    def lift_sine_unit(self, speed, amplitude, duration, cycle_start=0, cycle_end=180):
         watch = StopWatch()
         start = watch.time()
         time = 0
         zero = self.lift.unit()
+        cycle_length = (cycle_end - cycle_start) / 180 * pi
+        cycle_start *= pi / 180
+        cycle_end *= pi / 180
+
         while time < duration:
             time = watch.time() - start
-            theta = time / duration * pi * 2 * cycles
+            
+            theta = time / duration * cycle_length + cycle_start
             result = self.liftto(
                 amplitude * sin(theta) + zero, speed=speed, wait=False
             )
         return self.liftto(zero, speed=speed)
 
-    def move_lift_sine(self, move, speed, amplitude, duration, cycles=0.5):
+    def move_lift_sine(self, move, speed, amplitude, duration, cycle_start=0, cycle_end=180):
         move_speed = move / duration * 1000
         async def mls():
             await multitask(
                 self.strait(move, speed=move_speed),
-                self.lift_sine_unit(speed, amplitude, duration, cycles)
+                self.lift_sine_unit(speed, amplitude, duration, cycle_start=0, cycle_end=180)
             )
         return run_task(mls())
