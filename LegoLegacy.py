@@ -44,6 +44,14 @@ _CONFIG = {
     'front_face_direction': Axis.X,
 }
 
+class Motor(Motor):
+    def parameterize(self, equation):
+        current_angle = self.angle()
+        def new_equation(time):
+            target_angle = equation(time) + current_angle
+            self.track_target(target_angle)
+        return new_equation
+
 class Lift(Motor):
     teeth_per_unit = 2.5
 
@@ -124,8 +132,10 @@ class Bot:
         self.left_motor.reset_angle(0)
         self.right_motor.reset_angle(0)
         self.ring = Ring(ring_motor, Direction.CLOCKWISE)
+        self.ring.reset_angle(0)
         self.ring.control.target_tolerances(10, 5)
         self.lift = Lift(lift_motor, Direction.COUNTERCLOCKWISE)
+        self.lift.reset_angle(0)
         self.left_eye = ColorSensor(left_eye)
         self.right_eye = ColorSensor(right_eye)
         self.drive = Drive(
@@ -179,6 +189,40 @@ class Bot:
     def dead_reck(self):        
         return self.drive_mean() * self.wheel_circ() / 360
 
+    def track_parametric(
+        self, duration, left=None, right=None, lift=None, ring=None,
+    ):
+        equations = []
+        if left is not None:
+            equations.append(self.left_motor.parameterize(left))
+        if right is not None:
+            equations.append(self.right_motor.parameterize(right))
+        if lift is not None:
+            equations.append(self.lift.parameterize(lift))
+        if ring is not None:
+            equations.append(self.ring.parameterize(ring))
+
+        async def track():
+            watch = StopWatch()
+            start = watch.time()
+            time = 0
+            while time < duration:
+                time = watch.time() - start
+                t = time / duration
+                for equation in equations:
+                    equation(t)
+        
+        async def multitask_track():
+            await multitask(track(), wait(duration*1.1))
+
+        return run_task(multitask_track())
+
+    def get_drive_straight_circular_parametric(
+        self, amplitude, start, end, direction
+    ):
+        pass
+
+
     def accu_turn(self, angle, trn_rt=90, tolerance=0.25):
         start_angle = self.dead_head()
         current_angle = start_angle
@@ -193,7 +237,7 @@ class Bot:
     def accu_straight(self, distance, speed=100, tolerance=0.25):
         start_position = self.dead_reck()
         current_position = start_position
-        togo = distance
+        togo = distance 
         while abs(togo) > tolerance:
             modified_speed = max(min(speed, abs(togo)*5), 45)
             self.strait(togo, speed=modified_speed)
@@ -216,7 +260,7 @@ class Bot:
                 self.liftby(lift, speed=lift_speed)
             )
         return run_task(ml())
-    
+        
     def lift_sine_unit(self, speed, amplitude, duration, cycle_start=0, cycle_end=180):
         watch = StopWatch()
         start = watch.time()
