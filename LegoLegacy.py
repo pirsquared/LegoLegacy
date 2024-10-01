@@ -51,12 +51,35 @@ class Motor(Motor):
             target_angle = equation(time) + current_angle
             self.track_target(target_angle)
         return new_equation
+    
+    def parametric_ratio(self, mm=1):
+        return mm * 360 / _CONFIG['wheel_diameter'] / pi
+    
+    def get_wave_parametric(self, amplitude, start, end):
+        amplitude = self.parametric_ratio(amplitude)
+        start = start * pi / 180
+        end = end * pi / 180
+        shift = amplitude * sin(start)
+        def parametric(t):
+            theta = start + (end-start) * t
+            return amplitude * sin(theta) - shift
+        return parametric
 
 class Lift(Motor):
     teeth_per_unit = 2.5
+    teeth_per_mm = 2.5 / 8
 
     def ratio(self):
         return self.teeth_per_unit * _CONFIG['lift_deg_teeth_ratio']
+    
+    def mm2deg(self, mm=1):
+        return mm * self.teeth_per_mm * _CONFIG['lift_deg_teeth_ratio']
+    
+    def deg2mm(self, deg=1):
+        return deg / self.mm2deg()
+    
+    def parametric_ratio(self, unit):
+        return self.mm2deg(unit)
 
     def unit_to_deg(self, unit):
         return unit * self.ratio()
@@ -91,6 +114,9 @@ class Ring(Motor):
     
     def ring_angle(self):
         return self.angle() / self.ratio()
+    
+    def parametric_ratio(self, deg=1):
+        return deg * self.ratio()
 
 class Drive(DriveBase):
     def tern(self, angle, trn_rt=90, trn_acc=90, *args, **kwargs):
@@ -217,12 +243,6 @@ class Bot:
 
         return run_task(multitask_track())
 
-    def get_drive_straight_circular_parametric(
-        self, amplitude, start, end, direction
-    ):
-        pass
-
-
     def accu_turn(self, angle, trn_rt=90, tolerance=0.25):
         start_angle = self.dead_head()
         current_angle = start_angle
@@ -253,37 +273,24 @@ class Bot:
             )
         return run_task(tt())
 
-    def move_lift(self, move, lift, move_speed, lift_speed):
-        async def ml():
-            await multitask(
-                self.strait(move, speed=move_speed),
-                self.liftby(lift, speed=lift_speed)
-            )
-        return run_task(ml())
-        
-    def lift_sine_unit(self, speed, amplitude, duration, cycle_start=0, cycle_end=180):
-        watch = StopWatch()
-        start = watch.time()
-        time = 0
-        zero = self.lift.unit()
-        cycle_length = (cycle_end - cycle_start) / 180 * pi
-        cycle_start *= pi / 180
-        cycle_end *= pi / 180
+    def move_lift(self, duration, drive_kwargs, lift_kwargs):
+        lift = self.lift.get_wave_parametric(**lift_kwargs)
+        left = self.left_motor.get_wave_parametric(**drive_kwargs)
+        right = self.right_motor.get_wave_parametric(**drive_kwargs)
+        return self.track_parametric(duration, lift=lift, right=right, left=left)
 
-        while time < duration:
-            time = watch.time() - start
-            
-            theta = time / duration * cycle_length + cycle_start
-            result = self.liftto(
-                amplitude * sin(theta) + zero, speed=speed, wait=False
-            )
-        return self.liftto(zero, speed=speed)
+    def ring_turn(self, duration, angle):
+        drive_angle = angle / self.wheel_ratio()
+        ring_angle = -self.ring.parametric_ratio(angle)
 
-    def move_lift_sine(self, move, speed, amplitude, duration, cycle_start=0, cycle_end=180):
-        move_speed = move / duration * 1000
-        async def mls():
-            await multitask(
-                self.strait(move, speed=move_speed),
-                self.lift_sine_unit(speed, amplitude, duration, cycle_start=0, cycle_end=180)
-            )
-        return run_task(mls())
+        def ring(t):
+            return ring_angle * t
+
+        def right(t):
+            return drive_angle * t
+
+        def left(t):
+            return -right(t)
+
+        return self.track_parametric(duration, ring=ring, left=left, right=right)
+
