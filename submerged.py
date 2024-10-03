@@ -1,8 +1,8 @@
 from pybricks.hubs import PrimeHub
 from pybricks.parameters import Port, Stop
 from pybricks.tools import multitask, run_task, wait, StopWatch
-from umath import pi, sin
-from LegoLegacy import Bot, clear_console
+from umath import pi, sin, cos
+from LegoLegacy import Bot, clear_console, _CONFIG
 
 
 class GameBot(Bot):
@@ -16,6 +16,7 @@ class GameBot(Bot):
         # self.liftby(-1.5)
         # return self.strait(-100, speed=400)
 
+
 clear_console()
 bot = GameBot(
     left_motor=Port.A,
@@ -26,30 +27,15 @@ bot = GameBot(
     right_eye=Port.D,
     hub_type=PrimeHub
 )
-i = 1
-# bot._13(reverse=i==0)
-# bot.twist_turn(90, trn_rt=200, trn_acc=200)
-# bot.straight(-40)
-# bot.liftby(7)
-# bot.straight(20)
-# bot.liftby(3)
-# bot.straight(56)
-# bot.liftby(-28, speed=3000)
-sw = StopWatch()
-bot.lift_sine_unit(3000, 14, 1000)
-print(sw.time())
-# bot.lift.reset_angle(0)
-# bot.lift.run_angle(720, 360)
-# print(bot.lift.angle())
-# bot.straight(56)
-# bot.lift.reset_angle(0)
-# bot.liftto(2)
-# bot.liftto(-2)
-# bot.lift_sine_unit(180, 13, 2000)
-# bot.lift_sine_unit(180, 13, 2000)
-# bot.lift_sine_unit(180, 13, 2000)
-# bot.move_lift_sine(-50, 180, 13, 2000)
-# bot.lift.run_target(360, 270, Stop.COAST, wait=True)
-# time = watch.time() / 1000
-# print(bot.lift.angle() / time, time)
-# bot.lift.run_target(360, 0, Stop.COAST, wait=True)
+
+# for i in range(4):
+#     sign = (i%2*2-1)
+#     bot.move_lift(
+#         3000,
+#         drive_kwargs=dict(amplitude=80, start=sign*90, end=-sign*90),
+#         lift_kwargs=dict(amplitude=80, start=-10, end=190)
+#     )
+
+
+
+bot.ring_turn(8000, -360)
