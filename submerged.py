@@ -36,6 +36,24 @@ bot = GameBot(
 #         lift_kwargs=dict(amplitude=80, start=-10, end=190)
 #     )
 
+def get_sweep_right_motor_callback(angle):
+    drive_angle = angle / bot.wheel_ratio()
+    def right(t):
+        return drive_angle * t
+    return right
+
+def get_sweep_left_motor_callback(angle):
+    drive_angle = angle / bot.wheel_ratio()
+    def left(t):
+        return drive_angle * t
+    return left
+
+def get_ring_motor_callback(angle):
+    start_position = bot.dead_reck()
+    def ring(t):
+        distance = bot.dead_reck() - start_position
+        if distance < 100:
+            return 90
 
 
 bot.ring_turn(8000, -360)
