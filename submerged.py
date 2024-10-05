@@ -1,7 +1,7 @@
 from pybricks.hubs import PrimeHub
 from pybricks.parameters import Port, Stop
 from pybricks.tools import multitask, run_task, wait, StopWatch
-from umath import pi, sin, cos
+from umath import pi, sin, cos, acos
 from LegoLegacy import Bot, clear_console, _CONFIG
 
 
@@ -36,24 +36,62 @@ bot = GameBot(
 #         lift_kwargs=dict(amplitude=80, start=-10, end=190)
 #     )
 
-def get_sweep_right_motor_callback(angle):
-    drive_angle = angle / bot.wheel_ratio()
-    def right(t):
-        return drive_angle * t
-    return right
+def target_parameters(bot_pos, target):
+    # `p` is unit abbr for peg length
+    # 10p is 10 peg lengths
+    # each peg length is 8mm
+    # Bot diameter is 21p. From center of bot to center of outer peg
+    # is 10p.  The sweet spot is between the ends of the straight
+    # portions of the lift arms.  The sweet spot is 12p past the last
+    # part of the bot diameter.
+    # We'll use the sweet spot radius as the hypotenuse for calculating
+    # the desired angle to align the sweet spot with the target x coordinate
+    bot_x, bot_y = bot_pos
+    tgt_x, tgt_y = target
+    hyp = 176  # (10p + 12p) * 8mm/p
+    adj = bot_x - tgt_x
+    theta = acos(adj/hyp)
 
-def get_sweep_left_motor_callback(angle):
-    drive_angle = angle / bot.wheel_ratio()
-    def left(t):
-        return drive_angle * t
-    return left
+    opp = sin(theta) * hyp
 
-def get_ring_motor_callback(angle):
-    start_position = bot.dead_reck()
-    def ring(t):
-        distance = bot.dead_reck() - start_position
-        if distance < 100:
-            return 90
+    return tgt_y - (bot_y + opp), angle * 180 / pi
+
+async def ring_callback(bot_pos, targets):
+
+    targets = sorted([target_parameters(bot_pos, target) for target in targets])
+    buffer = 20
+    start_pos = bot.dead_reck()
+    dist = 0
+    if not targets:
+        return
+    while dist < positions[-1][0] + y_buffer:
+        tgt, angle = max(positions, key=lambda x: x[0] > dist)
+        if dist > tgt - buffer:
+            if dist > tgt + buffer:
+                bot.ring.track_target(bot.ring.parametric_ratio(90))
+            else:
+                bot.ring.track_target(bot.ring.parametric_ratio(angle))
+        dist = bot.dead_reck() - start_pos
 
 
-bot.ring_turn(8000, -360)
+async def main():
+    await multitask(
+        bot.strait(700, speed=50),
+        ring_callback(
+            (355.6, 124),
+            []
+        ),
+        race=True
+    )
+
+run_task(main())
+# bot.ring.track_target(bot.ring.parametric_ratio(105))
+# wait(2000)
+# bot.ring.track_target(bot.ring.parametric_ratio(80))
+# wait(2000)
+# bot.ring.track_target(bot.ring.parametric_ratio(105))
+# wait(2000)
+# bot.ring.track_target(bot.ring.parametric_ratio(70))
+# wait(5000)
+bot.ring.run_target(bot.ring.parametric_ratio(0))
+bot.strait(-680)
