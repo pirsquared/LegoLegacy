@@ -3,7 +3,7 @@ from pybricks.pupdevices import Motor, ColorSensor, UltrasonicSensor
 from pybricks.parameters import Button, Color, Direction, Port, Side, Stop, Axis
 from pybricks.robotics import DriveBase
 from pybricks.tools import wait, StopWatch, multitask, run_task
-from umath import pi, sin
+from umath import pi, sin, cos, asin, acos
 
 def clear_console():
     print("\x1b[H\x1b[2J", end="")
@@ -43,6 +43,21 @@ _CONFIG = {
     'top_face_direction': Axis.Z,
     'front_face_direction': Axis.X,
 }
+
+
+def twist_params(x):
+    w_g = 110
+    l_g = 202
+    r_g = ((110/2)**2 + 202**2)**0.5
+    try:
+        theta = acos(x/r_g)
+    except ValueError as e:
+        print(x, r_g)
+        raise ValueError from e
+
+    y = r_g * sin(theta)
+    return y, theta * 180 / pi
+
 
 class Motor(Motor):
     def parameterize(self, equation):
@@ -118,6 +133,9 @@ class Ring(Motor):
     def parametric_ratio(self, deg=1):
         return deg * self.ratio()
 
+    def ring_track(self, angle):
+        self.track_target(self.parametric_ratio(angle))
+
 class Drive(DriveBase):
     def tern(self, angle, trn_rt=90, trn_acc=90, *args, **kwargs):
         s_spd, s_acc, t_rate, t_acc = self.settings()
@@ -136,6 +154,7 @@ class Drive(DriveBase):
     def distance_to_angle(self, distance):
         return distance * 360 / (pi * _CONFIG['wheel_diameter'])
 
+    
 class Bot:
     def __init__(
             self,
@@ -172,6 +191,7 @@ class Bot:
         )
         self.drive.use_gyro(True)
         self.drive.heading_control.target_tolerances(10, 5)
+
 
     def twist(self, *args, **kwargs):
         return self.ring.twist(*args, **kwargs)
@@ -294,3 +314,97 @@ class Bot:
 
         return self.track_parametric(duration, ring=ring, left=left, right=right)
 
+    async def grab_callback(self, bot_pos, waypoints):
+        """this assumes we are going straight at a given x coord
+        and we need to swing the gatherer back and forth to collect
+        objects off the central path.
+
+        We'll take each target and calculate the distance required to position the
+        gatherer sweet spot on top of the target.
+
+        This function will swing the gather to the correct angle a buffered amount
+        prior to the target
+        """
+        bot_x, bot_y = bot_pos
+        waypoints = sorted(waypoints, key=lambda way: way[1])
+        enhanced_waypoints = []
+        for waypoint in waypoints:
+            way_x, way_y = waypoint
+            x = bot_x - way_x
+            delta, theta = twist_params(x)
+            enhanced_waypoints.append({
+                'way_x': way_x,
+                'way_y': way_y,
+                'delta': delta,
+                'theta': theta,
+                'x': x,
+                'thresh': waypoint[1] - bot_y - delta
+            })
+            
+        right_buffer = 10
+        start_pos = self.dead_reck()
+        dist = 0
+        if not waypoints:
+            return
+        last = max(enhanced_waypoints, key=lambda way: way['thresh'])
+        recent = None
+        while dist < last['thresh'] + right_buffer:
+            curr = max(enhanced_waypoints, key=lambda way: dist < way['thresh'])
+            self.ring.ring_track(curr['theta'])
+            await wait(0)
+            dist = self.dead_reck() - start_pos
+
+    def grab_on_the_go(self, distance, speed, bot_pos, waypoints):
+        async def task():
+            await multitask(
+                self.straight_with_heading_callback(distance, 0, speed=speed),
+                self.grab_callback(bot_pos, waypoints),
+                race=True
+            )
+        return run_task(task())
+
+    async def pivot_callback(self, hyp, distance):
+        start = self.dead_reck()
+        pos = start
+        theta_0 = self.ring.ring_angle()
+        base = sin(theta_0 * pi / 180)
+        ratio = (pos - start) / hyp
+        opp = max(min(base - ratio, 1), -1)
+        target_angle = asin(opp) * 180 / pi
+        recent = None
+        while abs(pos - start - distance) > 1:
+            pos = self.dead_reck()
+            ratio = (pos - start) / hyp
+            opp = max(min(base - ratio, 1), -1)
+            target_angle = asin(opp) * 180 / pi
+            self.ring.ring_track(target_angle)
+            await wait(0)
+
+    def pivot_and_go(self, distance, speed, hyp, timeout=5000):
+        async def task():
+            await multitask(
+                self.strait(distance, speed=speed),
+                self.pivot_callback(hyp, distance),
+                wait(timeout),
+                race=True
+            )
+        return run_task(task())
+
+    async def straight_with_heading_callback(self, distance, heading, speed, gain=2):
+        speed = abs(speed)
+        if distance < 0:
+            speed *= -1
+
+        start = self.dead_reck()
+        travel = 0
+
+        while abs(travel - distance) > 1:
+            correction = heading - self.drive.angle()
+            self.drive.drive(speed, correction * gain)
+            await wait(10)
+            travel = self.dead_reck() - start
+
+        self.drive.stop()
+
+    def straight_with_heading(self, *args, **kwargs):
+        return run_task(self.straight_with_heading_callback(*args, **kwargs))
