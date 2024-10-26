@@ -126,7 +126,13 @@ class Ring(Motor):
         result = self.run_angle(trn_rt, rotation_angle, **kwargs)
         self.control.limits(speed, acceleration, torque)
         return result
-    
+
+    async def twist_callback(self, angle, tol=1):
+        diff = angle - self.ring_angle()
+        while abs(diff) > tol:
+            await self.run_target(1000, self.parametric_ratio(angle))
+            diff = angle - self.ring_angle()
+
     def ring_angle(self):
         return self.angle() / self.ratio()
     
@@ -134,7 +140,7 @@ class Ring(Motor):
         return deg * self.ratio()
 
     def ring_track(self, angle):
-        self.track_target(self.parametric_ratio(angle))
+        return self.run_target(1000, self.parametric_ratio(angle))
 
 class Drive(DriveBase):
     def tern(self, angle, trn_rt=90, trn_acc=90, *args, **kwargs):
@@ -263,7 +269,7 @@ class Bot:
 
         return run_task(multitask_track())
 
-    def accu_turn(self, angle, trn_rt=90, tolerance=0.25):
+    async def accu_turn(self, angle, trn_rt=90, tolerance=0.25):
         start_angle = self.dead_head()
         current_angle = start_angle
         togo = angle
@@ -272,6 +278,7 @@ class Bot:
             self.turn(togo, trn_rt=turn_rate)
             current_angle = self.dead_head()
             togo = angle - (current_angle-start_angle)
+            await wait(0)
         return self.drive.stop()
 
     def accu_straight(self, distance, speed=100, tolerance=0.25):
@@ -354,14 +361,15 @@ class Bot:
             await wait(0)
             dist = self.dead_reck() - start_pos
 
-    def grab_on_the_go(self, distance, speed, bot_pos, waypoints):
-        async def task():
-            await multitask(
-                self.straight_with_heading_callback(distance, 0, speed=speed),
-                self.grab_callback(bot_pos, waypoints),
-                race=True
-            )
-        return run_task(task())
+    async def grab_on_the_go_callback(self, distance, speed, bot_pos, waypoints):
+        await multitask(
+            self.straight_with_heading_callback(distance, 0, speed=speed),
+            self.grab_callback(bot_pos, waypoints),
+            race=True
+        )
+
+    def grab_on_the_go(self, *args, **kwargs):
+        return run_task(self.grab_on_the_go_callback(*args, **kwargs))
 
     async def pivot_callback(self, hyp, distance):
         start = self.dead_reck()
@@ -392,13 +400,15 @@ class Bot:
 
     async def straight_with_heading_callback(self, distance, heading, speed, gain=2):
         speed = abs(speed)
+        direction = 1
         if distance < 0:
+            direction = -1
             speed *= -1
 
         start = self.dead_reck()
         travel = 0
 
-        while abs(travel - distance) > 1:
+        while (distance - travel) * direction > 1:
             correction = heading - self.drive.angle()
             self.drive.drive(speed, correction * gain)
             await wait(10)
@@ -408,3 +418,26 @@ class Bot:
 
     def straight_with_heading(self, *args, **kwargs):
         return run_task(self.straight_with_heading_callback(*args, **kwargs))
+
+    async def target_heading_callback(self, angle, turn_rate, tol=1, twist=False):
+        head0 = self.hub.imu.heading()
+        ring0 = self.ring.ring_angle()
+        diff = angle - head0
+        last_head = self.hub.imu.heading()
+        while abs(diff) > tol:
+            rate = diff / max(abs(diff), 10) * turn_rate
+            new_head = self.hub.imu.heading()
+            self.drive.drive(0, rate)
+            if twist:
+                target = ring0 + new_head - head0
+                self.ring.ring_track(target + 10 * abs(diff) / diff)
+            diff = angle - new_head
+            last_head = new_head
+            await wait(0)
+
+        self.drive.stop()
+        await self.ring.twist_callback(ring0 + (self.hub.imu.heading() - head0))
+
+    def target_heading(self, *args, **kwargs):
+        return run_task(self.target_heading_callback(*args, **kwargs))
+
