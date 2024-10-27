@@ -269,14 +269,18 @@ class Bot:
     async def pivot(self, hyp, distance):
         start = self.dead_reck()
         position = start
-        delta_y = position - start
         theta0 = self.ring.ring_angle()
-        sin_base = sin(theta0 * pi / 180)
-        opp = sin_base * hyp
+        sin0 = sin(theta0 * pi / 180)
+        opp0 = sin0 * hyp
         while abs(delta_y - distance) > 1:
             position = self.dead_reck()
             delta_y = position - start
-            sin_now = delta_y / hyp
+            # clip the ratio to between -1 and 1
+            # when the delta_y exceeds the hypotenuse
+            # we still want to navigate to the extreme
+            sin_now = max(min(delta_y / hyp, 1), -1)
+            target_angle = asin(sin_now) * 180 / pi
+            
 
 
 
