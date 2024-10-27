@@ -164,7 +164,7 @@ class Bot:
         self.ring.reset_angle(0)
         self.ring.control.target_tolerances(10, 1)
         # default: self.ring.control.pid(42484, 21242, 5310, 8, 15)
-        self.ring.control.pid(42484*200, 21242*0, 5310*10, 1, 100)
+        self.ring.control.pid(42484*10, 21242*1, 5310*1, 8, 1000)
         self.lift = Lift(lift_motor, Direction.COUNTERCLOCKWISE)
         self.lift.reset_angle(0)
         self.left_eye = ColorSensor(left_eye)
@@ -255,7 +255,7 @@ class Bot:
         while (distance - travel) * direction > 1:
             correction = heading - self.drive.angle()
             self.drive.drive(speed, correction * gain)
-            await wait(10)
+            await wait(0)
             travel = self.dead_reck() - start
 
         self.drive.stop()
@@ -266,44 +266,34 @@ class Bot:
             self.grab(bot_pos, waypoints)
         )
 
-    async def pivot(self, hyp, distance):
+    async def pivot(self, hypotenuse, distance_target):
         start = self.dead_reck()
-        position = start
         theta0 = self.ring.ring_angle()
         sin0 = sin(theta0 * pi / 180)
-        opp0 = sin0 * hyp
-        while abs(delta_y - distance) > 1:
+        opp0 = sin0 * hypotenuse
+        target_y = start + opp0
+        distance_travelled = 0
+        while abs(distance_travelled - distance_target) > 1:
             position = self.dead_reck()
-            delta_y = position - start
+            delta_y = target_y - position
             # clip the ratio to between -1 and 1
             # when the delta_y exceeds the hypotenuse
             # we still want to navigate to the extreme
-            sin_now = max(min(delta_y / hyp, 1), -1)
+            sin_now = max(min(delta_y / hypotenuse, 1), -1)
             target_angle = asin(sin_now) * 180 / pi
+            await self.ring.twist_target(target_angle)
+            distance_travelled = position - start
             
 
 
-
-
-        start = self.dead_reck()
-        pos = start
-        theta_0 = self.ring.ring_angle()
-        base = sin(theta_0 * pi / 180)
-        ratio = (pos - start) / hyp
-        opp = max(min(base - ratio, 1), -1)
-        target_angle = asin(opp) * 180 / pi
-        while abs(pos - start - distance) > 1:
-            pos = self.dead_reck()
-            ratio = (pos - start) / hyp
-            opp = max(min(base - ratio, 1), -1)
-            target_angle = asin(opp) * 180 / pi
-            self.ring.twist_target(target_angle)
-            await wait(0)
-
-    async def pivot_and_go(self, distance, heading, speed, hyp):
+    async def pivot_and_go(self, distance, heading, speed, hypotenuse):
+        # pivot isn't quite working and I don't have time to debug
+        # just going to use twist_target
+        angle = heading if distance < 0 else heading - 180
+        turn_rate = self.ring.parametric_ratio(angle) * speed / distance
         await multitask(
             self.straight_at(distance, heading, speed),
-            self.pivot(hyp, distance),
+            self.ring.twist_target(-90, speed=turn_rate)
         )
 
     async def twist_turn(self, angle, base_turn_rate):
@@ -321,7 +311,6 @@ class Bot:
 
         while head_flag or twist_flag:
             heading = self.heading()
-            ring_angle = self.ring_angle()
 
             sign = 1 if head_target > heading else -1
             change = heading - head0

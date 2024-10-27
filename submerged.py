@@ -80,21 +80,20 @@ class GameBot(Bot):
         #
         # There may be occasion to add a phantom way point in order to get the
         # bot to move a certain way for some purpose.
-        self.grab_on_the_go(
-            distance=700, speed=200, bot_pos=(355.6, 108),
+        run_task(self.straight_at_and_grab(
+            distance=700, heading=0, speed=200, bot_pos=(355.6, 108),
             waypoints=[(396, 540), (299, 700), (400, 825), (215, 900)]
-        )
+        ))
 
         # pivot_and_go is a maneuver that moves the bot straight while twisting
         # the ring in a way as to keep a specified point in the gatherer at a
         # fixed lattitude, distance from the bottom.
-        self.pivot_and_go(200, 200, 80)
-
-        run_task(self.ring.twist_callback(-90))
+        run_task(self.pivot_and_go(200, 0, 200, 80))
+        self.ring.twist_target(-90)
         self.drive.curve(-150, -90),
         # self.drive.curve(-150, -90)
         # run_task(self.ring.twist_callback(-90))
-        self.straight_with_heading(-900, 90, 100)
+        run_task(self.straight_at(-900, 90, 100))
 
     def test(self, twist, distance):
         async def task():
@@ -115,7 +114,7 @@ bot = GameBot(
     hub_type=PrimeHub
 )
 
-# bot.rs3k1clsws1k2c()
+bot.rs3k1clsws1k2c()
 
 # default: bot.drive.settings(189, 709, 126, 571)
 # bot.drive.settings(189, 709, 126*10//4, 1000)
@@ -142,6 +141,18 @@ bot = GameBot(
 # bot.ring.twist_target(0)
 # run_task(bot.straight_at(-200, 0, 100))
 
-bot.ring.twist_target(90)
-run_task(bot.pivot_and_go(200, 0, 50, 80))
-bot.ring.twist_target(0)
+# bot.ring.twist_target(45)
+# bot.ring.twist_target(135)
+# bot.ring.twist_target(90)
+# bot.ring.twist_target(180)
+# bot.ring.twist_target(135)
+# bot.ring.twist_target(270)
+# bot.ring.twist_target(180)
+# bot.ring.twist_target(315)
+# bot.ring.twist_target(270)
+# bot.ring.twist_target(360)
+# bot.ring.twist_target(0)
+
+# bot.ring.twist_target(-90)
+# run_task(bot.pivot_and_go(distance=-200, heading=0, speed=200, hypotenuse=200))
+# run_task(bot.straight_at(-200, 0, 100))
