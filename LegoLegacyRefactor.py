@@ -269,11 +269,14 @@ class Bot:
     async def pivot(self, hyp, distance):
         start = self.dead_reck()
         position = start
+        delta_y = position - start
         theta0 = self.ring.ring_angle()
         sin_base = sin(theta0 * pi / 180)
         opp = sin_base * hyp
-        while abs(position - start - distance) > 1:
+        while abs(delta_y - distance) > 1:
             position = self.dead_reck()
+            delta_y = position - start
+            sin_now = delta_y / hyp
 
 
 
