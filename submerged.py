@@ -2,7 +2,7 @@ from pybricks.hubs import PrimeHub
 from pybricks.parameters import Port, Stop
 from pybricks.tools import multitask, run_task, wait, StopWatch
 from umath import pi, sin, cos, asin, acos
-from LegoLegacy import Bot, clear_console, _CONFIG
+from LegoLegacy import Bot, clear_console
 
 
 class GameBot(Bot):
@@ -115,4 +115,33 @@ bot = GameBot(
     hub_type=PrimeHub
 )
 
-bot.rs3k1clsws1k2c()
+# bot.rs3k1clsws1k2c()
+
+# default: bot.drive.settings(189, 709, 126, 571)
+# bot.drive.settings(189, 709, 126*10//4, 1000)
+# print(bot.ring.control.limits())
+# bot.ring.control.limits(2000, 2000, 1000)
+# print(bot.ring.control.limits())
+# run_task(bot.twist_turn(120, 50))
+# run_task(bot.twist_turn(-120, 50))
+# bot.ring.twist_target(360)
+# bot.ring.twist_target(0)
+# run_task(bot.straight_at(50, 0, 100))
+# run_task(bot.straight_at(-50, 0, 50))
+
+# init_buffer = 10
+# run_task(bot.straight_at(init_buffer, 0, 50))
+# run_task(bot.straight_at_and_grab(
+#     distance=200-init_buffer, heading=0, speed=50, bot_pos=(355.6, 108-init_buffer),
+#     waypoints=[(355.6, 300), (396, 320), (299, 340)]
+# ))
+# bot.ring.twist_target(180)
+# bot.ring.twist_target(90)
+# bot.ring.twist_target(0)
+# bot.ring.twist_target(-90)
+# bot.ring.twist_target(0)
+# run_task(bot.straight_at(-200, 0, 100))
+
+bot.ring.twist_target(90)
+run_task(bot.pivot_and_go(200, 0, 50, 80))
+bot.ring.twist_target(0)
