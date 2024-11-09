@@ -42,8 +42,8 @@ _CONFIG = {
     'hub_class': InventorHub,
     'top_face_direction': Axis.Z,
     'front_face_direction': Axis.X,
-    'gatherer_length': 110,
-    'gatherer_width': 202,
+    'gatherer_length': 200,       # Measured @ 202 but 200 puts focus more in 
+    'gatherer_width': 110,        # middle of gatherer.  Might want to put back
 }
 
 
@@ -120,8 +120,18 @@ class Lift(Motor):
 class Ring(Motor):
     ratio = _CONFIG['ring_outer_teeth'] / _CONFIG['ring_drive_teeth']
 
-    def twist_target(self, angle, speed=1000, **kwargs):
-        return self.run_target(speed, self.parametric_ratio(angle), **kwargs)
+    def twist_target(self, angle, speed=1000, kpf=10, **kwargs):
+        spd_tol, pos_tol = self.control.target_tolerances()
+        self.control.target_tolerances(spd_tol, 1)
+        kp, *pid_params = self.control.pid()
+        self.control.pid(kp * kpf, *pid_params)
+        result = self.run_target(speed, self.parametric_ratio(angle), **kwargs)
+        self.control.target_tolerances(spd_tol, pos_tol)
+        self.control.pid(kp, *pid_params)
+        return result
+
+    async def twist_target_async(self, angle, speed=1000, **kwargs):
+        await self.run_target(speed, self.parametric_ratio(angle), **kwargs)
 
     def ring_angle(self):
         return self.angle() / self.ratio
@@ -158,15 +168,12 @@ class Bot:
         )
         self.left_motor = Motor(left_motor, Direction.COUNTERCLOCKWISE)
         self.right_motor = Motor(right_motor, Direction.CLOCKWISE)
-        self.left_motor.reset_angle(0)
-        self.right_motor.reset_angle(0)
         self.ring = Ring(ring_motor, Direction.CLOCKWISE)
-        self.ring.reset_angle(0)
-        self.ring.control.target_tolerances(10, 1)
+        self.ring.control.target_tolerances(10, 3)
         # default: self.ring.control.pid(42484, 21242, 5310, 8, 15)
-        self.ring.control.pid(42484*10, 21242*1, 5310*1, 8, 1000)
+        # self.ring.control.pid(42484*10, 21242*1, 5310*1, 8, 1000)
         self.lift = Lift(lift_motor, Direction.COUNTERCLOCKWISE)
-        self.lift.reset_angle(0)
+
         self.left_eye = ColorSensor(left_eye)
         self.right_eye = ColorSensor(right_eye)
         self.drive = Drive(
@@ -176,9 +183,40 @@ class Bot:
             self.wheel_base
         )
         self.drive.use_gyro(True)
-        self.drive.heading_control.target_tolerances(10, 1)
+        self.drive.heading_control.target_tolerances(10, 3)
+        self.stopwatch = StopWatch()
         # default: self.drive.heading_control.pid(7558, 0, 1889, 3, 5)
         # self.drive.heading_control.pid(7558*25, 0, 1889, 3, 5)
+
+        self.reset()
+
+    def reset(self):
+        self.lift.reset_angle(0)
+        self.ring.reset_angle(0)
+        self.left_motor.reset_angle(0)
+        self.right_motor.reset_angle(0)
+        self.hub.imu.reset_heading(0)
+        self.drive.reset()
+
+    def ring_kp(self, kp=None):
+        if kp is None:
+            return self.ring.control.pid()[0]
+        *pid_params, = self.ring.control.pid()
+        pid_params[0] = kp
+        self.ring.control.pid(*pid_params)
+
+    def ring_tol(self, *args, **kwargs):
+        return self.ring.control.target_tolerances(*args, **kwargs)
+
+    async def goturn_async(self, distance, heading, speed, angle):
+        await multitask(
+            self.straight_at(distance, heading, speed),
+            self.ring.twist_target(angle)
+        )
+
+    def goturn(self, *args, **kwargs):
+        run_task(self.goturn_async(*args, **kwargs))
+
 
     def heading(self):
         return self.hub.imu.heading()
@@ -204,7 +242,19 @@ class Bot:
     def dead_reck(self):        
         return self.drive_mean_angle() * self.wheel_circumference / 360
 
-    async def grab(self, bot_pos, waypoints):
+    def liftup(self, mm=None, *args, **kwargs):
+        if mm is None:
+            return self.lift.run_until_stalled(300, duty_limit=50)
+        angle = self.lift.angle() + self.lift.mm2deg(mm)
+        return self.lift.run_target(300, angle, *args, **kwargs)
+
+    def liftdown(self, mm=None, *args, **kwargs):
+        if mm is None:
+            return self.lift.run_until_stalled(-300, duty_limit=50)
+        angle = self.lift.angle() - self.lift.mm2deg(mm)
+        return self.lift.run_target(300, angle, *args, **kwargs)
+
+    async def grab(self, bot_pos, waypoints, wait_time=5, verbose=False):
         """this assumes we are going straight at a given x coord
         and we need to swing the gatherer back and forth to collect
         objects off the central path.
@@ -236,13 +286,21 @@ class Bot:
         dist = 0
         if not waypoints:
             return
-        last = max(enhanced_waypoints, key=lambda way: way['thresh'])
-        while dist < last['thresh'] + right_buffer:
-            curr = max(enhanced_waypoints, key=lambda way: dist < way['thresh'])
-            await self.ring.twist_target(curr['theta'])
+
+        current_wp, *remaining_wp = enhanced_waypoints
+        while True:
+            while remaining_wp and current_wp['thresh'] < dist:
+                current_wp, *remaining_wp = remaining_wp
+        
+            if verbose:
+                print(f"   ↪ Current wp ({current_wp['way_x']:>4}, {current_wp['way_y']:>4})       ts: {self.stopwatch.time():>4}")
+
+            angle = self.ring.parametric_ratio(current_wp['theta'])
+            self.ring.track_target(angle)
+            await wait(wait_time)
             dist = self.dead_reck() - start_pos
 
-    async def straight_at(self, distance, heading, speed, gain=2):
+    async def straight_at(self, distance, heading, speed, gain=2, wait_time=5, verbose=False):
         speed = abs(speed)
         direction = 1
         if distance < 0:
@@ -255,18 +313,21 @@ class Bot:
         while (distance - travel) * direction > 1:
             correction = heading - self.drive.angle()
             self.drive.drive(speed, correction * gain)
-            await wait(0)
+            if verbose:
+                print(f"Current travel {travel:>10.2f}          ts: {self.stopwatch.time():>4}")
+            await wait(wait_time)
             travel = self.dead_reck() - start
 
         self.drive.stop()
 
-    async def straight_at_and_grab(self, distance, heading, speed, bot_pos, waypoints):
+    async def straight_at_and_grab(self, distance, heading, speed, bot_pos, waypoints, wait_time=5):
         await multitask(
-            self.straight_at(distance, heading, speed=speed),
-            self.grab(bot_pos, waypoints)
+            self.grab(bot_pos, waypoints, wait_time),
+            self.straight_at(distance, heading, speed=speed, wait_time=wait_time),
+            race=True
         )
 
-    async def pivot(self, hypotenuse, distance_target):
+    async def pivot(self, hypotenuse, distance_target, wait_time=5):
         start = self.dead_reck()
         theta0 = self.ring.ring_angle()
         sin0 = sin(theta0 * pi / 180)
@@ -281,20 +342,70 @@ class Bot:
             # we still want to navigate to the extreme
             sin_now = max(min(delta_y / hypotenuse, 1), -1)
             target_angle = asin(sin_now) * 180 / pi
-            await self.ring.twist_target(target_angle)
+            angle = self.ring.parametric_ratio(target_angle)
+            self.ring.track_target(angle)
+            await wait(wait_time)
             distance_travelled = position - start
-            
 
-
-    async def pivot_and_go(self, distance, heading, speed, hypotenuse):
-        # pivot isn't quite working and I don't have time to debug
-        # just going to use twist_target
-        angle = heading if distance < 0 else heading - 180
-        turn_rate = self.ring.parametric_ratio(angle) * speed / distance
+    async def pivot_and_go(self, distance, heading, speed, hypotenuse, wait_time=5):
         await multitask(
-            self.straight_at(distance, heading, speed),
-            self.ring.twist_target(-90, speed=turn_rate)
+            self.straight_at(distance, heading, speed, wait_time=wait_time),
+            self.pivot(hypotenuse, distance, wait_time=wait_time)
         )
+
+    def duty_twist(self, angle, direction=1, speed=400, timeout=2000):
+        ring0 = self.ring_angle()
+        ring_diff = (angle - ring0) % 360
+        if direction > 0:
+            ring_diff -= 360
+        target_angle = ring0 + ring_diff
+        parametric_angle = self.ring.parametric_ratio(target_angle)
+        
+        time0 = self.stopwatch.time()
+        while abs(target_angle - self.ring_angle()) > 1:
+            self.ring.run_target(speed=speed, target_angle=parametric_angle, wait=False)
+            if self.ring.stalled() or self.stopwatch.time() - time0 > timeout:
+                self.ring.stop()
+                break
+
+    def sync_twist_turn(self, heading, base_turn_rate, twist=True, steps=100, wait_time=10, lead=1):
+        direction = 1 if base_turn_rate > 0 else -1
+        base_turn_rate = abs(base_turn_rate)
+        head0 = self.heading()
+        ring0 = self.ring_angle()
+        head_diff = (heading - head0) % 360
+        if direction < 0:
+            head_diff -= 360
+
+        target_heading = head0 + head_diff
+
+        left_start = self.left_angle()
+        right_start = self.right_angle()
+        wheel_diff = head_diff * self.wheel_base / self.wheel_diameter
+        left_target = left_start + wheel_diff
+        right_target = right_start - wheel_diff
+
+        for i in range(steps+1):
+            wheel_delta = i * wheel_diff / steps
+            angle_delta = (i+lead) * head_diff / steps
+
+            self.left_motor.track_target(left_start + wheel_delta)
+            self.right_motor.track_target(right_start - wheel_delta)
+            if twist:
+                self.ring.twist_target(ring0+angle_delta, speed=3000, kpf=100, wait=False)
+            wait(wait_time)
+
+        
+        self.left_motor.run_target(1000, left_target, wait=False)
+        self.right_motor.run_target(1000, right_target, wait=not twist)
+        if twist:
+            self.ring.twist_target(ring0+head_diff)
+
+            # print(f'{i:<6} Wheel Delta: {wheel_delta:>10.4f} Angle Delta: {angle_delta:>10.4f}')
+            # print(f'       Wheel Posit: {self.left_angle()-left_start:10.4f} Angle Posit: {self.heading()-head0:10.4f}')
+
+
+
 
     async def twist_turn(self, angle, base_turn_rate):
         base_turn_rate = abs(base_turn_rate)
@@ -323,7 +434,7 @@ class Bot:
             self.drive.drive(0, turn_rate * sign)
             self.ring.track_target(self.ring.parametric_ratio(ring_target_now))
 
-            await wait(0)
+            await wait(1)
             head_flag = abs(head_target - self.heading()) > 1
             twist_flag = abs(ring_target - self.ring_angle()) > 1
 
@@ -332,7 +443,6 @@ class Bot:
     async def twist_at(self, angle):
         self.ring.track_target(self.ring.parametric_ratio(angle))
         await wait(0)
-
 
 
 
