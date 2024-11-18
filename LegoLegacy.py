@@ -395,17 +395,6 @@ class Bot:
                 self.ring.twist_target(ring0+angle_delta, speed=3000, kpf=100, wait=False)
             wait(wait_time)
 
-        
-        self.left_motor.run_target(1000, left_target, wait=False)
-        self.right_motor.run_target(1000, right_target, wait=not twist)
-        if twist:
-            self.ring.twist_target(ring0+head_diff)
-
-            # print(f'{i:<6} Wheel Delta: {wheel_delta:>10.4f} Angle Delta: {angle_delta:>10.4f}')
-            # print(f'       Wheel Posit: {self.left_angle()-left_start:10.4f} Angle Posit: {self.heading()-head0:10.4f}')
-
-
-
 
     async def twist_turn(self, angle, base_turn_rate):
         base_turn_rate = abs(base_turn_rate)
