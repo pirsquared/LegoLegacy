@@ -15,7 +15,7 @@ _CONFIG = {
                                   # the angle of rotation for each motor and the
                                   # measured distance traveled by the robot.  The
                                   # test resulted in an estimated 54.2mm wheel dia.
-    'wheel_base': 142.3,          # The distance from the center of one wheel to
+    'wheel_base': 128,            # The distance from the center of one wheel to
                                   # the center of the other wheel is 18 peg
                                   # lengths.  With each peg length equal to 8mm
                                   # that's a total of 144mm.  However, we ran
@@ -28,7 +28,7 @@ _CONFIG = {
                                   # and left/right motors at 18_794/18_795 respectively
                                   # using 54.2mm wheel_diameter is 142.27
 
-    'ring_drive_teeth': 36,
+    'ring_drive_teeth': 24,
     'ring_outer_teeth': 140,      # 35 per quarter ring * 4
     'lift_deg_teeth_ratio': 7.5,  # 75 degree turn on the lift motor results in
                                   # 10 teeth on the lift rack which is one full
@@ -92,7 +92,7 @@ class Lift(Motor):
     ratio = teeth_per_unit * _CONFIG['lift_deg_teeth_ratio']
     
     def mm2deg(self, mm=1):
-        return mm * self.teeth_per_mm * _CONFIG['lift_deg_teeth_ratio']
+        return -mm * self.teeth_per_mm * _CONFIG['lift_deg_teeth_ratio']
     
     def deg2mm(self, deg=1):
         return deg / self.mm2deg()
@@ -154,8 +154,6 @@ class Bot:
             right_motor: Port,
             ring_motor: Port,
             lift_motor: Port,
-            left_eye: Port,
-            right_eye: Port,
             hub_type: type = _CONFIG['hub_class']
         ):
         self.wheel_diameter = _CONFIG['wheel_diameter']
@@ -174,8 +172,6 @@ class Bot:
         # self.ring.control.pid(42484*10, 21242*1, 5310*1, 8, 1000)
         self.lift = Lift(lift_motor, Direction.COUNTERCLOCKWISE)
 
-        self.left_eye = ColorSensor(left_eye)
-        self.right_eye = ColorSensor(right_eye)
         self.drive = Drive(
             self.left_motor,
             self.right_motor,
@@ -392,7 +388,7 @@ class Bot:
             self.left_motor.track_target(left_start + wheel_delta)
             self.right_motor.track_target(right_start - wheel_delta)
             if twist:
-                self.ring.twist_target(ring0+angle_delta, speed=3000, kpf=100, wait=False)
+                self.ring.twist_target(ring0-angle_delta, speed=3000, kpf=100, wait=False)
             wait(wait_time)
 
 
