@@ -295,13 +295,46 @@ if __name__ == "__main__":
     clear_console()
     bot = GameBot(
         left_motor=Port.A,
-        right_motor=Port.F,
+        right_motor=Port.E,
         ring_motor=Port.C,
-        lift_motor=Port.B,
-        left_eye=Port.E,
-        right_eye=Port.D,
+        lift_motor=Port.D,
         hub_type=PrimeHub
     )
+
+    print('hi')
+    # bot.sync_twist_turn(-180, 100)
+    direction = 1
+    # bot.liftup()
+    # bot.liftdown()
+    # bot.drive.turn(90)
+    # bot.drive.turn(-90)
+    # bot.ring.twist_target(90 * direction)
+    # bot.ring.twist_target(180 * direction)
+    # bot.ring.twist_target(0 * direction)
+
+    # bot.sync_twist_turn(-90, 100)
+    # bot.straight_at_sync(300, 0, 400)
+    # bot.straight_at_sync(-300, 0, 400)
+    # bot.sync_twist_turn(-90, -100)
+    # wait(1000)
+    # bot.sync_twist_turn(0, 100)
+    # wait(2000)
+    # print(bot.ring_angle(), bot.heading())
+    # bot.sync_twist_turn(0, -100)
+    # wait(2000)
+    # print(bot.right_angle(), bot.heading())
+
+
+    bot_pos = [347, 108]
+    run_task(bot.straight_at_and_grab(
+        distance=700, heading=0, speed=200, bot_pos=bot_pos,
+        waypoints=[(395, 553), (300, 711), (385, 827), (216, 907)],
+        wait_time=1
+    ))
+
+
+
+    raise SystemExit
 
     programs = {}
     i = 0
