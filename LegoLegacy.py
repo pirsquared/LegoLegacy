@@ -125,16 +125,16 @@ class Ring(Motor):
         self.control.target_tolerances(spd_tol, 1)
         kp, *pid_params = self.control.pid()
         self.control.pid(kp * kpf, *pid_params)
-        result = self.run_target(speed, self.parametric_ratio(angle), **kwargs)
+        result = self.run_target(speed, -self.parametric_ratio(angle), **kwargs)
         self.control.target_tolerances(spd_tol, pos_tol)
         self.control.pid(kp, *pid_params)
         return result
 
     async def twist_target_async(self, angle, speed=1000, **kwargs):
-        await self.run_target(speed, self.parametric_ratio(angle), **kwargs)
+        await self.run_target(speed, -self.parametric_ratio(angle), **kwargs)
 
     def ring_angle(self):
-        return self.angle() / self.ratio
+        return -self.angle() / self.ratio
     
     def parametric_ratio(self, deg=1):
         return deg * self.ratio
@@ -276,7 +276,7 @@ class Bot:
                 'x': x,
                 'thresh': waypoint[1] - bot_y - delta
             })
-            
+
         right_buffer = 10
         start_pos = self.dead_reck()
         dist = 0
@@ -292,7 +292,7 @@ class Bot:
                 print(f"   ↪ Current wp ({current_wp['way_x']:>4}, {current_wp['way_y']:>4})       ts: {self.stopwatch.time():>4}")
 
             angle = self.ring.parametric_ratio(current_wp['theta'])
-            self.ring.track_target(angle)
+            self.ring.twist_target(current_wp['theta'], wait=False)
             await wait(wait_time)
             dist = self.dead_reck() - start_pos
 
@@ -315,6 +315,10 @@ class Bot:
             travel = self.dead_reck() - start
 
         self.drive.stop()
+
+    def straight_at_sync(self, *args, **kwargs):
+        return run_task(self.straight_at(*args, **kwargs))
+
 
     async def straight_at_and_grab(self, distance, heading, speed, bot_pos, waypoints, wait_time=5):
         await multitask(
@@ -390,6 +394,16 @@ class Bot:
             if twist:
                 self.ring.twist_target(ring0-angle_delta, speed=3000, kpf=100, wait=False)
             wait(wait_time)
+
+        time = self.stopwatch.time()
+        ring_flag = abs(ring0-head_diff-self.ring_angle()) > 5
+        head_flag = abs(head0+head_diff-self.heading()) > 5
+        time_flag = self.stopwatch.time() - time < 5000
+        while (ring_flag or head_flag) and time_flag:
+            wait(wait_time)
+            ring_flag = abs(ring0-head_diff-self.ring_angle()) > 10
+            head_flag = abs(head0+head_diff-self.heading()) > 10
+            time_flag = self.stopwatch.time() - time < 3000
 
 
     async def twist_turn(self, angle, base_turn_rate):
