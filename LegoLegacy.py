@@ -30,6 +30,7 @@ _CONFIG = {
 
     'ring_drive_teeth': 24,
     'ring_outer_teeth': 140,      # 35 per quarter ring * 4
+    'ring_oreintation': -1,       # -1 for clockwise, 1 for counter-clockwise
     'lift_deg_teeth_ratio': 7.5,  # 75 degree turn on the lift motor results in
                                   # 10 teeth on the lift rack which is one full
                                   # length four piece.  The entire rack is sev
@@ -118,23 +119,31 @@ class Lift(Motor):
         return self.lift_target(target, speed, **kwargs)
 
 class Ring(Motor):
+    """"""
     ratio = _CONFIG['ring_outer_teeth'] / _CONFIG['ring_drive_teeth']
+    orientation = _CONFIG['ring_oreintation']
 
     def twist_target(self, angle, speed=1000, kpf=10, **kwargs):
         spd_tol, pos_tol = self.control.target_tolerances()
         self.control.target_tolerances(spd_tol, 1)
         kp, *pid_params = self.control.pid()
         self.control.pid(kp * kpf, *pid_params)
-        result = self.run_target(speed, -self.parametric_ratio(angle), **kwargs)
+        adj_angle = self.orientation * self.parametric_ratio(angle)
+        result = self.run_target(speed, adj_angle, **kwargs)
         self.control.target_tolerances(spd_tol, pos_tol)
         self.control.pid(kp, *pid_params)
         return result
 
     async def twist_target_async(self, angle, speed=1000, **kwargs):
-        await self.run_target(speed, -self.parametric_ratio(angle), **kwargs)
+        adj_angle = self.orientation * self.parametric_ratio(angle)
+        await self.run_target(speed, adj_angle, **kwargs)
+
+    def twist_track(self, angle):
+        adj_angle = self.orientation * self.parametric_ratio(angle)
+        return self.track_target(adj_angle)
 
     def ring_angle(self):
-        return -self.angle() / self.ratio
+        return self.orientation * self.angle() / self.ratio
     
     def parametric_ratio(self, deg=1):
         return deg * self.ratio
@@ -146,6 +155,22 @@ class Drive(DriveBase):
     
     def mm2deg(self, mm=1):
         return mm * 360 / self.wheel_diameter / pi
+    
+    def turn(self, angle, turn_rate, *args, **kwargs):
+        ss, sa, tr, ta = self.settings()
+        self.settings(ss, sa, turn_rate, ta)
+        result = super().turn(angle, *args, **kwargs)
+        self.settings(ss, sa, tr, ta)
+        return result
+
+    def curve(self, radius, angle, speed, *args, **kwargs):
+        ss, sa, tr, ta = self.settings()
+        self.settings(speed, sa, tr, ta)
+        result = super().curve(radius, angle, *args, **kwargs)
+        self.settings(ss, sa, tr, ta)
+        return result
+
+
     
 class Bot:
     def __init__(
@@ -368,76 +393,68 @@ class Bot:
                 self.ring.stop()
                 break
 
-    def sync_twist_turn(self, heading, base_turn_rate, twist=True, steps=100, wait_time=10, lead=1):
-        direction = 1 if base_turn_rate > 0 else -1
-        base_turn_rate = abs(base_turn_rate)
+    async def maintain_ring_orientation(self, angle=None, wait_time=10):
+        if angle is None:
+            angle = self.ring_angle()
+
         head0 = self.heading()
-        ring0 = self.ring_angle()
-        head_diff = (heading - head0) % 360
-        if direction < 0:
-            head_diff -= 360
 
-        target_heading = head0 + head_diff
+        while True:
+            self.ring.twist_track(angle + (self.heading() - head0))
+            await wait(wait_time)
 
-        left_start = self.left_angle()
-        right_start = self.right_angle()
-        wheel_diff = head_diff * self.wheel_base / self.wheel_diameter
-        left_target = left_start + wheel_diff
-        right_target = right_start - wheel_diff
+    async def _turn(self, angle, turn_rate, twist=False, orientation=None, **kwargs):
+        if twist:
 
-        for i in range(steps+1):
-            wheel_delta = i * wheel_diff / steps
-            angle_delta = (i+lead) * head_diff / steps
+            async def turn(angle, turn_rate, **kwargs):
+                await self.drive.turn(angle, turn_rate, **kwargs)
 
-            self.left_motor.track_target(left_start + wheel_delta)
-            self.right_motor.track_target(right_start - wheel_delta)
-            if twist:
-                self.ring.twist_target(ring0-angle_delta, speed=3000, kpf=100, wait=False)
-            wait(wait_time)
+            await multitask(
+                turn(angle, turn_rate, **kwargs),
+                self.maintain_ring_orientation(orientation),
+                race=True,
+            )
 
-        time = self.stopwatch.time()
-        ring_flag = abs(ring0-head_diff-self.ring_angle()) > 5
-        head_flag = abs(head0+head_diff-self.heading()) > 5
-        time_flag = self.stopwatch.time() - time < 5000
-        while (ring_flag or head_flag) and time_flag:
-            wait(wait_time)
-            ring_flag = abs(ring0-head_diff-self.ring_angle()) > 10
-            head_flag = abs(head0+head_diff-self.heading()) > 10
-            time_flag = self.stopwatch.time() - time < 3000
+        else:
+            await self.drive.turn(angle, turn_rate, **kwargs)
 
+    async def _curve(self, radius, angle, speed, twist=False, orientation=None, **kwargs):
+        if twist:
 
-    async def twist_turn(self, angle, base_turn_rate):
-        base_turn_rate = abs(base_turn_rate)
+            async def curve(radius, angle, speed, **kwargs):
+                await self.drive.curve(radius, angle, speed, **kwargs)
+
+            await multitask(
+                curve(radius, angle, speed, **kwargs),
+                self.maintain_ring_orientation(orientation),
+                race=True,
+            )
+
+        else:
+            await self.drive.curve(radius, angle, speed, **kwargs)
+
+    def turn(self, *args, **kwargs):
+        return run_task(self._turn(*args, **kwargs))
+
+    def curve(self, *args, **kwargs):
+        return run_task(self._curve(*args, **kwargs))
+
+    def curve_links(self, radius, angles, speed, **kwargs):
+        results = []
+        orientation = kwargs.get('orientation', self.ring_angle())
         head0 = self.heading()
-        ring0 = self.ring_angle()
-
-        head_target = head0 + angle
-        ring_target = ring0 + angle
-
-        change = self.heading() - head0
-
-        head_flag = abs(head_target - self.heading()) > 1
-        twist_flag = abs(ring_target - self.ring_angle()) > 1
-
-        while head_flag or twist_flag:
-            heading = self.heading()
-
-            sign = 1 if head_target > heading else -1
-            change = heading - head0
-            ring_target_now = ring0 + change
-
-            factor = abs(head_target - heading) / 20
-
-            turn_rate = min(base_turn_rate, base_turn_rate * factor)
-            
-            self.drive.drive(0, turn_rate * sign)
-            self.ring.track_target(self.ring.parametric_ratio(ring_target_now))
-
-            await wait(1)
-            head_flag = abs(head_target - self.heading()) > 1
-            twist_flag = abs(ring_target - self.ring_angle()) > 1
-
-        self.drive.stop()
+        delta = orientation - head0
+        for angle in angles[:-1]:
+            results.append(self.curve(
+                radius, angle, speed, then=Stop.NONE,
+                orientation=delta + self.heading(), **kwargs
+            ))
+        results.append(
+            self.curve(radius, angles[-1], speed, then=Stop.HOLD,
+            orientation=delta + self.heading(), **kwargs
+        ))
+        self.turn(self.heading() - sum(angles), turn_rate=45, twist=True, orientation=delta+self.heading())
+        return results
 
     async def twist_at(self, angle):
         self.ring.track_target(self.ring.parametric_ratio(angle))

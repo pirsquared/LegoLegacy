@@ -301,36 +301,22 @@ if __name__ == "__main__":
         hub_type=PrimeHub
     )
 
-    print('hi')
-    # bot.sync_twist_turn(-180, 100)
-    direction = 1
-    # bot.liftup()
-    # bot.liftdown()
-    # bot.drive.turn(90)
-    # bot.drive.turn(-90)
-    # bot.ring.twist_target(90 * direction)
-    # bot.ring.twist_target(180 * direction)
-    # bot.ring.twist_target(0 * direction)
 
-    # bot.sync_twist_turn(-90, 100)
-    # bot.straight_at_sync(300, 0, 400)
-    # bot.straight_at_sync(-300, 0, 400)
-    # bot.sync_twist_turn(-90, -100)
-    # wait(1000)
-    # bot.sync_twist_turn(0, 100)
-    # wait(2000)
-    # print(bot.ring_angle(), bot.heading())
-    # bot.sync_twist_turn(0, -100)
-    # wait(2000)
-    # print(bot.right_angle(), bot.heading())
+    # bot.ring.twist_target(30)
+    bot.curve_links(50, [30, -60, 60, -30], 100, twist=True)
+    bot.curve_links(-50, [-30, 60, -60, 30], 100, twist=True)
+    # bot.ring.twist_target(0)
+    # bot.curve(50, 60, 50, twist=True, orientation=None)
+    # print(bot.heading(), bot.ring_angle())
+    # bot.curve(50, -60, 50, twist=True, orientation=bot.heading())
+    # print(bot.heading(), bot.ring_angle())
 
-
-    bot_pos = [347, 108]
-    run_task(bot.straight_at_and_grab(
-        distance=700, heading=0, speed=200, bot_pos=bot_pos,
-        waypoints=[(395, 553), (300, 711), (385, 827), (216, 907)],
-        wait_time=1
-    ))
+    # bot_pos = [347, 108]
+    # run_task(bot.straight_at_and_grab(
+    #     distance=700, heading=0, speed=200, bot_pos=bot_pos,
+    #     waypoints=[(395, 553), (300, 711), (385, 827), (216, 907)],
+    #     wait_time=1
+    # ))
 
 
 
