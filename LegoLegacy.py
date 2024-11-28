@@ -30,7 +30,6 @@ _CONFIG = {
 
     'ring_drive_teeth': 24,
     'ring_outer_teeth': 140,      # 35 per quarter ring * 4
-    'ring_oreintation': -1,       # -1 for clockwise, 1 for counter-clockwise
     'lift_deg_teeth_ratio': 7.5,  # 75 degree turn on the lift motor results in
                                   # 10 teeth on the lift rack which is one full
                                   # length four piece.  The entire rack is sev
@@ -121,18 +120,21 @@ class Lift(Motor):
 class Ring(Motor):
     """"""
     ratio = _CONFIG['ring_outer_teeth'] / _CONFIG['ring_drive_teeth']
-    orientation = _CONFIG['ring_oreintation']
+    orientation = -1
 
-    def twist_target(self, angle, speed=1000, kpf=10, **kwargs):
+    async def _twist_target(self, angle, speed=1000, kpf=10, **kwargs):
         spd_tol, pos_tol = self.control.target_tolerances()
         self.control.target_tolerances(spd_tol, 1)
         kp, *pid_params = self.control.pid()
         self.control.pid(kp * kpf, *pid_params)
         adj_angle = self.orientation * self.parametric_ratio(angle)
-        result = self.run_target(speed, adj_angle, **kwargs)
+        result = await self.run_target(speed, adj_angle, **kwargs)
         self.control.target_tolerances(spd_tol, pos_tol)
         self.control.pid(kp, *pid_params)
         return result
+
+    def twist_target(self, *args, **kwargs):
+        return run_task(self._twist_target(*args, **kwargs))
 
     async def twist_target_async(self, angle, speed=1000, **kwargs):
         adj_angle = self.orientation * self.parametric_ratio(angle)
@@ -219,26 +221,6 @@ class Bot:
         self.hub.imu.reset_heading(0)
         self.drive.reset()
 
-    def ring_kp(self, kp=None):
-        if kp is None:
-            return self.ring.control.pid()[0]
-        *pid_params, = self.ring.control.pid()
-        pid_params[0] = kp
-        self.ring.control.pid(*pid_params)
-
-    def ring_tol(self, *args, **kwargs):
-        return self.ring.control.target_tolerances(*args, **kwargs)
-
-    async def goturn_async(self, distance, heading, speed, angle):
-        await multitask(
-            self.straight_at(distance, heading, speed),
-            self.ring.twist_target(angle)
-        )
-
-    def goturn(self, *args, **kwargs):
-        run_task(self.goturn_async(*args, **kwargs))
-
-
     def heading(self):
         return self.hub.imu.heading()
 
@@ -320,6 +302,29 @@ class Bot:
             self.ring.twist_target(current_wp['theta'], wait=False)
             await wait(wait_time)
             dist = self.dead_reck() - start_pos
+
+    async def _straight(self, distance, heading, speed, gain=2, wait_time=5, verbose=False):
+        speed = abs(speed)
+        direction = 1
+        if distance < 0:
+            direction = -1
+            speed *= -1
+
+        start = self.dead_reck()
+        travel = 0
+
+        while (distance - travel) * direction > 1:
+            correction = heading - self.drive.angle()
+            self.drive.drive(speed, correction * gain)
+            if verbose:
+                print(f"Current travel {travel:>10.2f}          ts: {self.stopwatch.time():>4}")
+            await wait(wait_time)
+            travel = self.dead_reck() - start
+
+        self.drive.stop()
+
+    def straight(self, *args, **kwargs):
+        return run_task(self._straight(*args, **kwargs))
 
     async def straight_at(self, distance, heading, speed, gain=2, wait_time=5, verbose=False):
         speed = abs(speed)
@@ -456,9 +461,10 @@ class Bot:
         self.turn(self.heading() - sum(angles), turn_rate=45, twist=True, orientation=delta+self.heading())
         return results
 
-    async def twist_at(self, angle):
-        self.ring.track_target(self.ring.parametric_ratio(angle))
-        await wait(0)
+    async def _twist_target(self, *args, **kwargs):
+        await self.ring._twist_target(*args, **kwargs)
 
+    def twist_target(self, *args, **kwargs):
+        return run_task(self._twist_target(*args, **kwargs))
 
 
