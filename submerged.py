@@ -292,53 +292,91 @@ class GameBot(Bot):
 
 if __name__ == "__main__":
 
-    clear_console()
-    bot = GameBot(
-        left_motor=Port.A,
-        right_motor=Port.E,
-        ring_motor=Port.C,
-        lift_motor=Port.D,
-        hub_type=PrimeHub
-    )
+    try:
+
+        clear_console()
+        bot = GameBot(
+            left_motor=Port.A,
+            right_motor=Port.E,
+            ring_motor=Port.C,
+            lift_motor=Port.D,
+            hub_type=PrimeHub
+        )
+
+        bot.straight(100, 0, 300)
+        ue_angle = -45
+        bot.turn(ue_angle, turn_rate=180, twist=True, orientation=-(90+ue_angle+10))
+        bot.straight(200, ue_angle, 200)
+        run_task(multitask(
+            bot._straight(125, ue_angle, 50),
+            bot._twist_target(-90)
+        ))
+        bot.straight(-150, -47, 100)
+        bot.curve(120, 90, 100, twist=True)
+        temp_angle = bot.ring_angle()
+        bot.twist_target(temp_angle-60)
+        bot.twist_target(temp_angle)
+        bot.straight(66, 45, 50)
+
+        bot.turn(135 - bot.heading(), turn_rate=50, twist=True)
+
+        # run_task(multitask(
+        #     bot._straight(100, 0, 100),
+        #     bot._twist_target(-90)
+        # ))
+        # run_task(multitask(
+        #     bot._straight(-100, 0, 50),
+        #     bot._twist_target(0, 500)
+        # ))
+        # bot.curve_links(50, [30, -60, 60, -30], 100, twist=True)
+        # bot.curve_links(-50, [-30, 60, -60, 30], 100, twist=True)
+
+        # bot_pos = [347, 108]
+        # run_task(bot.straight_at_and_grab(
+        #     distance=700, heading=0, speed=200, bot_pos=bot_pos,
+        #     waypoints=[(395, 553), (300, 711), (385, 827), (216, 907)],
+        #     wait_time=1
+        # ))
+
+        proceed = hub_menu('X', 'O')
+        if proceed == 'X':
+
+            run_task(multitask(
+                bot._turn(-bot.heading(), 50),
+                bot._twist_target(0)
+            ))
+            raise SystemExit from e
 
 
-    # bot.ring.twist_target(30)
-    bot.curve_links(50, [30, -60, 60, -30], 100, twist=True)
-    bot.curve_links(-50, [-30, 60, -60, 30], 100, twist=True)
-    # bot.ring.twist_target(0)
-    # bot.curve(50, 60, 50, twist=True, orientation=None)
-    # print(bot.heading(), bot.ring_angle())
-    # bot.curve(50, -60, 50, twist=True, orientation=bot.heading())
-    # print(bot.heading(), bot.ring_angle())
 
-    # bot_pos = [347, 108]
-    # run_task(bot.straight_at_and_grab(
-    #     distance=700, heading=0, speed=200, bot_pos=bot_pos,
-    #     waypoints=[(395, 553), (300, 711), (385, 827), (216, 907)],
-    #     wait_time=1
-    # ))
+        raise SystemExit
 
+        programs = {}
+        i = 0
+        while hasattr(bot, f'phase{i}'):
+            programs[str(i)] = getattr(bot, f'phase{i}')
+            i += 1
 
+        options = sorted(programs)
+        while True:
+            selected = hub_menu(*options)
+            bot.reset()
+            programs[selected]()
+            bot.drive.stop()
+            bot.ring.stop()
+            bot.lift.stop()
+            i = options.index(selected)
+            options = [str((int(j) + i + 1 % len(options))) for j in options]
 
-    raise SystemExit
+    except Exception as e:
+        proceed = hub_menu('X', 'O')
+        if proceed == 'X':
 
-    programs = {}
-    i = 0
-    while hasattr(bot, f'phase{i}'):
-        programs[str(i)] = getattr(bot, f'phase{i}')
-        i += 1
+            run_task(multitask(
+                bot._turn(-bot.heading(), 50),
+                bot._twist_target(0)
+            ))
+            raise SystemExit from e
 
-    options = sorted(programs)
-    while True:
-        selected = hub_menu(*options)
-        bot.reset()
-        programs[selected]()
-        bot.drive.stop()
-        bot.ring.stop()
-        bot.lift.stop()
-        i = options.index(selected)
-        options = [str((int(j) + i + 1 % len(options))) for j in options]
-
-
-
+        raise e
 
