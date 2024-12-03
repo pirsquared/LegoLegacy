@@ -41,7 +41,7 @@ _CONFIG = {
                                   # issues if we need more torque/lift power.
     'hub_class': InventorHub,
     'top_face_direction': Axis.Z,
-    'front_face_direction': Axis.X,
+    'front_face_direction': Axis.Y,
     'gatherer_length': 200,       # Measured @ 202 but 200 puts focus more in 
     'gatherer_width': 110,        # middle of gatherer.  Might want to put back
 }
@@ -62,6 +62,11 @@ def twist_params(adjacent):
     y = hypotenuse * sin(theta)
     return y, theta * 180 / pi
 
+def curve_get_r_theta_from_x_y(x, y):
+    xx = x * x
+    yy = y * y
+    xy = x * y
+    return (xx + yy)/(2*x), asin(2*xy/(xx + yy)) / pi * 180
 
 class Motor(Motor):
     def make_para_callback(self, equation):
@@ -86,13 +91,19 @@ class Motor(Motor):
             return amplitude * sin(theta) - shift
         return parametric
 
+    async def _run_t(self, *args, **kwargs):
+        await self.run_target(*args, **kwargs)
+
+    def run_t(self, *args, **kwargs):
+        return run_task(self._run_t(*args, **kwargs))
+
 class Lift(Motor):
     teeth_per_unit = 2.5
     teeth_per_mm = 2.5 / 8
     ratio = teeth_per_unit * _CONFIG['lift_deg_teeth_ratio']
     
     def mm2deg(self, mm=1):
-        return -mm * self.teeth_per_mm * _CONFIG['lift_deg_teeth_ratio']
+        return mm * self.teeth_per_mm * _CONFIG['lift_deg_teeth_ratio']
     
     def deg2mm(self, deg=1):
         return deg / self.mm2deg()
@@ -111,11 +122,46 @@ class Lift(Motor):
     
     def lift_target(self, pegs, speed=90, **kwargs):
         return self.run_target(speed, self.peg2deg(pegs), **kwargs)
+
+    async def _forklift(self, distance, speed, **kwargs):
+        await self.run_target(speed, self.mm2deg(distance), **kwargs)
+
+    def forklift(self, *args, **kwargs):
+        return run_task(self._forklift(*args, **kwargs))
         
     def liftby(self, pegs, speed=90, **kwargs):
         start = self.deg2peg(self.angle())
         target = start + pegs
         return self.lift_target(target, speed, **kwargs)
+
+    async def _lift(self, speed, distance, duty_limit=80, *args, **kwargs):
+        lift0 = self.angle()
+        target = lift0 + self.mm2deg(distance)
+
+        kwargs['wait'] = False
+        self.run_target(speed, target, *args, **kwargs)
+
+        while abs(self.angle() - target) > self.control.target_tolerances()[1]:
+            dl = abs(self.load() * 100 / self.control.limits()[2])
+            if dl >= duty_limit:
+                print(f'Attempted {distance}')
+                print(f'Achieved {self.parametric_ratio(self.angle() - lift0)}')
+                print(f'Duty {dl}')
+                self.stop()
+                break
+            await wait(10)
+
+    def lift(self, *args, **kwargs):
+        return run_task(self._lift(*args, **kwargs))
+
+    async def _bump(self, speed, distance, *args, **kwargs):
+        lift0 = self.angle()
+        await self._lift(speed, distance, *args, **kwargs)
+        bump_distance = self.deg2mm(lift0 - self.angle())
+        await self._lift(speed, bump_distance, *args, **kwargs)
+
+    def bump(self, *args, **kwargs):
+        return run_task(self._bump(*args, **kwargs))
 
 class Ring(Motor):
     """"""
@@ -181,6 +227,8 @@ class Bot:
             right_motor: Port,
             ring_motor: Port,
             lift_motor: Port,
+            left_eye: Port,
+            right_eye: Port,
             hub_type: type = _CONFIG['hub_class']
         ):
         self.wheel_diameter = _CONFIG['wheel_diameter']
@@ -191,13 +239,15 @@ class Bot:
             top_side=_CONFIG['top_face_direction'],
             front_side=_CONFIG['front_face_direction']
         )
+        self.left_eye = ColorSensor(left_eye)
+        self.right_eye = ColorSensor(right_eye)
         self.left_motor = Motor(left_motor, Direction.COUNTERCLOCKWISE)
         self.right_motor = Motor(right_motor, Direction.CLOCKWISE)
         self.ring = Ring(ring_motor, Direction.CLOCKWISE)
         self.ring.control.target_tolerances(10, 3)
         # default: self.ring.control.pid(42484, 21242, 5310, 8, 15)
         # self.ring.control.pid(42484*10, 21242*1, 5310*1, 8, 1000)
-        self.lift = Lift(lift_motor, Direction.COUNTERCLOCKWISE)
+        self.lift = Lift(lift_motor, Direction.COUNTERCLOCKWISE, profile=5)
 
         self.drive = Drive(
             self.left_motor,
@@ -220,6 +270,22 @@ class Bot:
         self.right_motor.reset_angle(0)
         self.hub.imu.reset_heading(0)
         self.drive.reset()
+
+    def get_state(self):
+        return (
+            self.lift.angle(),
+            self.ring.angle(),
+            self.left_motor.angle(),
+            self.right_motor.angle(),
+            self.hub.imu.heading()
+        )
+
+    def set_state(self, lift, ring, left, rignt, head):
+        self.lift.reset_angle(lift)
+        self.ring.reset_angle(ring)
+        self.left_motor.reset_angle(left)
+        self.right_motor.reset_angle(right)
+        self.hub.imu.reset_heading(head)
 
     def heading(self):
         return self.hub.imu.heading()
@@ -448,6 +514,7 @@ class Bot:
         results = []
         orientation = kwargs.get('orientation', self.ring_angle())
         head0 = self.heading()
+        expected_final_heading = head0 + sum(angles)
         delta = orientation - head0
         for angle in angles[:-1]:
             results.append(self.curve(
@@ -458,7 +525,12 @@ class Bot:
             self.curve(radius, angles[-1], speed, then=Stop.HOLD,
             orientation=delta + self.heading(), **kwargs
         ))
-        self.turn(self.heading() - sum(angles), turn_rate=45, twist=True, orientation=delta+self.heading())
+        self.turn(
+            expected_final_heading - self.heading(),
+            turn_rate=45,
+            twist=True,
+            orientation=delta + self.heading()
+        )
         return results
 
     async def _twist_target(self, *args, **kwargs):
@@ -467,4 +539,58 @@ class Bot:
     def twist_target(self, *args, **kwargs):
         return run_task(self._twist_target(*args, **kwargs))
 
+    async def _lrlt(self, left, right, lift, wait_time):
+        self.left_motor.track_target(left)
+        self.right_motor.track_target(right)
+        self.lift.track_target(lift)
+        await wait(wait_time)
+
+    def lrlt(self, *args, **kwargs):
+        return run_task(self._lrlt(*args, **kwargs))
+
+    async def _lrl(self, left, right, lift, speed=1000, then=Stop.HOLD):
+        await multitask(
+            self.left_motor._run_t(speed, left, then=then),
+            self.right_motor._run_t(speed, right, then=then),
+            self.lift._run_t(speed, lift, then=then)
+        )
+
+    def lrl(self, *args, **kwargs):
+        return run_task(self._lrl(*args, **kwargs))
+
+    async def _para_lift_drive(self, lift_f, drive_f, n=100, wait_time=100):
+
+        left0 = self.left_angle()
+        right0 = self.right_angle()
+        lift0 = self.lift.angle()
+
+        time = 0
+        for i in range(n):
+            time = (i + 0.5)/n
+
+            drive_deg = self.right_motor.parametric_ratio(drive_f(time))
+            lift_deg = self.lift.parametric_ratio(lift_f(time))
+            
+            await self._lrlt(
+                left  = drive_deg + left0,
+                right = drive_deg + right0,
+                lift  = lift_deg  + lift0,
+                wait_time = wait_time
+            )
+
+        drive_deg = self.right_motor.parametric_ratio(drive_f(1))
+        lift_deg = self.lift.parametric_ratio(lift_f(1))
+            
+        await self._lrl(
+            left  = drive_deg + left0,
+            right = drive_deg + right0,
+            lift  = lift_deg  + lift0,
+        )
+
+    def para_lift_drive(self, *args, **kwargs):
+        return run_task(self._para_lift_drive(*args, **kwargs))
+
+
+
+        
 
