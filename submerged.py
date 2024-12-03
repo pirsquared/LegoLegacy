@@ -2,7 +2,7 @@ from pybricks.hubs import PrimeHub
 from pybricks.parameters import Port, Stop, Color, Button
 from pybricks.tools import multitask, run_task, wait, StopWatch, hub_menu
 from umath import pi, sin, cos, asin, acos, sqrt
-from LegoLegacy import Bot, clear_console, twist_params
+from LegoLegacy import Bot, clear_console, curve_get_r_theta_from_x_y
 
 
 class GameBot(Bot):
@@ -292,91 +292,186 @@ class GameBot(Bot):
 
 if __name__ == "__main__":
 
-    try:
+    clear_console()
+    bot = GameBot(
+        left_motor=Port.A,
+        right_motor=Port.E,
+        ring_motor=Port.C,
+        lift_motor=Port.D,
+        left_eye=Port.F,
+        right_eye=Port.B,
+        hub_type=PrimeHub
+    )
 
-        clear_console()
-        bot = GameBot(
-            left_motor=Port.A,
-            right_motor=Port.E,
-            ring_motor=Port.C,
-            lift_motor=Port.D,
-            hub_type=PrimeHub
-        )
+    # bot.lift.forklift(-80, 1000)
+    def lift_f(time):
+        peg = 8
+        if time < .1:
+            return time * peg / .1
+        if time < .9:
+            t = (time - .1) / .8
+            return 80 * sin(t * pi) + peg
+        return (1 - time) * peg / .1
 
-        bot.straight(100, 0, 300)
-        ue_angle = -45
-        bot.turn(ue_angle, turn_rate=180, twist=True, orientation=-(90+ue_angle+10))
-        bot.straight(200, ue_angle, 200)
-        run_task(multitask(
-            bot._straight(125, ue_angle, 50),
-            bot._twist_target(-90)
-        ))
-        bot.straight(-150, -47, 100)
-        bot.curve(120, 90, 100, twist=True)
-        temp_angle = bot.ring_angle()
-        bot.twist_target(temp_angle-60)
-        bot.twist_target(temp_angle)
-        bot.straight(66, 45, 50)
+    def drive_f(time):
+        if time < .1:
+            return 0
+        if time < .9:
+            t = (time - .1) / .8
+            return 80 * (1 - cos(t * pi))
+        return 160
 
-        bot.turn(135 - bot.heading(), turn_rate=50, twist=True)
+    def drive_r(time):
+        return -drive_f(time)
 
-        # run_task(multitask(
-        #     bot._straight(100, 0, 100),
-        #     bot._twist_target(-90)
-        # ))
-        # run_task(multitask(
-        #     bot._straight(-100, 0, 50),
-        #     bot._twist_target(0, 500)
-        # ))
-        # bot.curve_links(50, [30, -60, 60, -30], 100, twist=True)
-        # bot.curve_links(-50, [-30, 60, -60, 30], 100, twist=True)
+    
+    def pause(msg='', ask=True):
+        print(f'{msg:<30} | H: {bot.heading():8.2f} | R: {bot.ring_angle():8.2f}')
+        
+        if ask:
+            p = hub_menu('G', 'S')
+            if p == 'S':
+                run_task(multitask(
+                    bot._turn(-bot.heading(), 50),
+                    bot._twist_target(0)
+                ))
+                bot.liftdown()
+                raise ValueError('Hmm!')
+            else:
+                bot.hub.display.char('@')
 
-        # bot_pos = [347, 108]
-        # run_task(bot.straight_at_and_grab(
-        #     distance=700, heading=0, speed=200, bot_pos=bot_pos,
-        #     waypoints=[(395, 553), (300, 711), (385, 827), (216, 907)],
-        #     wait_time=1
-        # ))
+    
 
-        proceed = hub_menu('X', 'O')
-        if proceed == 'X':
+    ##  Beginnings of phase0  ##
+    ##  Please Save           ##
 
-            run_task(multitask(
-                bot._turn(-bot.heading(), 50),
-                bot._twist_target(0)
-            ))
-            raise SystemExit from e
+    bot.straight(100, 0, 200)
+    ue_angle = -45
+    bot.turn(ue_angle, turn_rate=180, twist=True, orientation=-(90+ue_angle+10))
+    bot.straight(180, ue_angle, 200)
+    run_task(multitask(
+        bot._straight(160, ue_angle, 120),
+        bot._twist_target(-90)
+    ))
+    bot.straight(-76, ue_angle, 200)
+    bot.curve(90, 90, 200, twist=True)
+    bot.twist_target(-70)
+    bot.twist_target(0)
+
+    pause('heading to change lanes', False)
 
 
+    pause('check alignment', False)
+    bot.straight(68, 45, 50, gain=4)
+    pause('check again', False)
 
-        raise SystemExit
+    bot.turn(-45 - bot.heading(), turn_rate=45, twist=True)
 
-        programs = {}
-        i = 0
-        while hasattr(bot, f'phase{i}'):
-            programs[str(i)] = getattr(bot, f'phase{i}')
-            i += 1
+    bot.para_lift_drive(lift_f, drive_r, n=50, wait_time=20)
+    wait(200)
+    bot.turn(45 - bot.heading(), turn_rate=45, twist=True)
 
-        options = sorted(programs)
-        while True:
-            selected = hub_menu(*options)
-            bot.reset()
-            programs[selected]()
-            bot.drive.stop()
-            bot.ring.stop()
-            bot.lift.stop()
-            i = options.index(selected)
-            options = [str((int(j) + i + 1 % len(options))) for j in options]
+    bot.straight(-210, 45, 200)
 
-    except Exception as e:
-        proceed = hub_menu('X', 'O')
-        if proceed == 'X':
+    bot.liftup(64, wait=False)
+    bot.turn(0 - bot.heading(), turn_rate=200, twist=True, orientation=-45)
 
-            run_task(multitask(
-                bot._turn(-bot.heading(), 50),
-                bot._twist_target(0)
-            ))
-            raise SystemExit from e
+    pause('just after change lanes', False)
 
-        raise e
+
+    bot.straight(330, 0, 400)
+
+    pause('Can I nab krill', False)
+    temp_angle = bot.ring_angle()
+    bot.twist_target(temp_angle-65)
+    bot.twist_target(temp_angle)
+
+    bot.turn(-90 - bot.heading(), turn_rate=200)
+
+    pause('before submersible', False)
+
+
+    bot.straight(200, -90, 200)
+    orientation = -90
+    radius, theta = curve_get_r_theta_from_x_y(100, 430)
+    bot.curve(radius=radius, angle=theta, speed=200, twist=True, orientation=orientation)
+
+    bot.liftup(64)
+    bot.liftdown(64)
+
+    pause('Did I submerge?', True)
+
+
+    bot.straight(-40, bot.heading(), 100)
+    bot.turn(-135 - bot.heading(), turn_rate=100, twist=True)
+
+    pause('check distances', False)
+    radius, theta = curve_get_r_theta_from_x_y(60, 152)
+    bot.curve(radius=radius, angle=theta, speed=200, twist=True)
+
+    pause('debating turn vs twist.')
+
+    bot.turn(0 - bot.heading(), turn_rate=100)
+    bot.twist_target(0)
+
+    pause('at angler?', True)
+
+    bot.turn(0 - bot.heading(), turn_rate=100, twist=True)
+    bot.straight(150, 0, 100)
+    bot.liftup()
+    bot.straight(-50, 0, 100)
+
+    pause('did I get sample?', True)
+
+    bot.turn(-90 - bot.heading(), turn_rate=100, twist=True)
+    bot.straight(50, -90, 100)
+    radius, theta = curve_get_r_theta_from_x_y(-100, 350)
+    bot.curve(radius=-radius, angle=theta, speed=100, twist=False)
+    
+    pause('Look at nursery', True)
+
+    bot.turn(0 - bot.heading(), turn_rate=100, twist=True, orientation=45)
+
+    pause('am I preppared for nursery?', True)
+
+    ## Phase0 ##
+    ## End    ##
+
+
+    # run_task(multitask(
+    #     bot._straight(100, 0, 100),
+    #     bot._twist_target(-90)
+    # ))
+    # run_task(multitask(
+    #     bot._straight(-100, 0, 50),
+    #     bot._twist_target(0, 500)
+    # ))
+    # bot.curve_links(50, [30, -60, 60, -30], 100, twist=True)
+    # bot.curve_links(-50, [-30, 60, -60, 30], 100, twist=True)
+
+    # bot_pos = [347, 108]
+    # run_task(bot.straight_at_and_grab(
+    #     distance=700, heading=0, speed=200, bot_pos=bot_pos,
+    #     waypoints=[(395, 553), (300, 711), (385, 827), (216, 907)],
+    #     wait_time=1
+    # ))
+
+    raise SystemExit
+
+    programs = {}
+    i = 0
+    while hasattr(bot, f'phase{i}'):
+        programs[str(i)] = getattr(bot, f'phase{i}')
+        i += 1
+
+    options = sorted(programs)
+    while True:
+        selected = hub_menu(*options)
+        bot.reset()
+        programs[selected]()
+        bot.drive.stop()
+        bot.ring.stop()
+        bot.lift.stop()
+        i = options.index(selected)
+        options = [str((int(j) + i + 1 % len(options))) for j in options]
 
