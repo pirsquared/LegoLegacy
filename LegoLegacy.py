@@ -591,6 +591,72 @@ class Bot:
         return run_task(self._para_lift_drive(*args, **kwargs))
 
 
+    async def _gyro_pid(self, heading, speed, kp, ki, kd, integral_range=100):
+        integral = 0
+        last_error = 0
+        while True:
+            error = heading - self.heading()
+            integral = max(min(integral + error, integral_range), -integral_range)
+            derivative = error - last_error
+            correction = kp * error + ki * integral + kd * derivative
+            self.drive.drive(speed, correction)
+            await wait(10)
 
-        
+    def gyro_pid(self, *args, **kwargs):
+        return run_task(self._gyro_pid(*args, **kwargs))
+    
+    async def _gyro_pid_drive(self, heading, distance, speed, kp, ki, kd, integral_range=100):
+        integral = 0
+        last_error = 0
+        start = self.dead_reck()
+        while abs(distance - (self.dead_reck() - start)) > 1:
+            error = heading - self.heading()
+            integral = max(min(integral + error, integral_range), -integral_range)
+            derivative = error - last_error
+            correction = kp * error + ki * integral + kd * derivative
+            self.drive.drive(speed, correction)
+            await wait(10)
 
+    def gyro_pid_drive(self, *args, **kwargs):
+        return run_task(self._gyro_pid_drive(*args, **kwargs))
+    
+    async def _light_pid(self, light, speed, side, kp, ki, kd, integral_range=100):
+        if side == 'left':
+            eye = self.left_eye
+        else:
+            eye = self.right_eye
+
+        integral = 0
+        last_error = 0
+        while True:
+            error = light - eye.reflection()
+            integral = max(min(integral + error, integral_range), -integral_range)
+            derivative = error - last_error
+            correction = kp * error + ki * integral + kd * derivative
+            self.drive.drive(speed, correction)
+            await wait(10)
+
+    def light_pid(self, *args, **kwargs):
+        return run_task(self._light_pid(*args, **kwargs))
+    
+    async def _light_pid_drive(self, light, distance, speed, side, kp, ki, kd, integral_range=100):
+        if side == 'left':
+            eye = self.left_eye
+        else:
+            eye = self.right_eye
+
+        integral = 0
+        last_error = 0
+        start = self.dead_reck()
+        while abs(distance - (self.dead_reck() - start)) > 1:
+            error = light - eye.reflection()
+            integral = max(min(integral + error, integral_range), -integral_range)
+            derivative = error - last_error
+            correction = kp * error + ki * integral + kd * derivative
+            self.drive.drive(speed, correction)
+            await wait(10)
+
+    def light_pid_drive(self, *args, **kwargs):
+        return run_task(self._light_pid_drive(*args, **kwargs))
+    
+    
