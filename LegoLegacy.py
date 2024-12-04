@@ -659,4 +659,20 @@ class Bot:
     def light_pid_drive(self, *args, **kwargs):
         return run_task(self._light_pid_drive(*args, **kwargs))
     
+    async def _lags(self, light, heading, speed, side, kp, ki, kd, kl, integral_range=100):
+        if side == 'left':
+            eye = self.left_eye
+        else:
+            eye = self.right_eye
+
+        integral = 0
+        last_error = 0
+        while True:
+            error = heading - self.heading()
+            light_error = light - eye.reflection()
+            integral = max(min(integral + error, integral_range), -integral_range)
+            derivative = error - last_error
+            correction = kp * error + ki * integral + kd * derivative + kl * light_error
+            self.drive.drive(speed, correction)
+            await wait(10)
     
