@@ -595,6 +595,7 @@ class Bot:
             eye_side, line_orientation,
             light_kp, light_ki, light_kd, light_integral_range,
             heading_kp, heading_ki, heading_kd, heading_integral_range,
+            stop_at_end_of_line=True
     ):
         if eye_side == 'left':
             eye = self.left_eye
@@ -616,12 +617,15 @@ class Bot:
         def distance_condition():
             distance_travelled = self.dead_reck() - start
             return (
+                distance is None or
                 distance_travelled == 0 or 
                 distance_target * direction / distance_travelled > 1
             )
-
         
-        while distance_condition() and (await eye.hsv()).s < 30:
+        def line_condition():
+            return stop_at_end_of_line and eye.hsv().s < 30
+
+        while distance_condition() and line_condition():
             reflection = await eye.reflection()
             light_error = light_target - reflection
             light_integral = max(min(light_integral + light_error, light_integral_range), -light_integral_range)
@@ -639,3 +643,67 @@ class Bot:
 
     def lags(self, *args, **kwargs):
         return run_task(self._lags(*args, **kwargs))
+    
+    async def _catch_line(self):
+
+        while True:
+            left_reflection = await self.left_eye.reflection()
+            right_reflection = await self.right_eye.reflection()
+            if not 30 < left_reflection < 70:
+                return 'left', left_reflection
+            if not 30 < right_reflection < 70:
+                return 'right', right_reflection
+            await wait(10)
+
+    async def _square(self, speed, heading_target=None):
+        if heading_target is None:
+            heading_target = self.heading()
+
+        await multitask(
+            self._lags(
+                light_target=50, heading_target=heading_target, distance_target=None,
+                speed=speed, eye_side='left', line_orientation='fw',
+                light_kp=0, light_ki=0, light_kd=0, light_integral_range=100,
+                heading_kp=2, heading_ki=0.05, heading_kd=0.5, heading_integral_range=100
+            ),
+            self._catch_line(),
+            race=True
+        )
+        self.drive.stop()
+
+        s0, s1 = 0, 0
+
+        self.left_motor.run(speed)
+        self.right_motor.run(speed)
+        while True:
+            r0 = await self.left_eye.reflection()
+            r1 = await self.right_eye.reflection()
+            if s0 == 0:
+                if r0 < 30:
+                    s0 = -1
+                elif r0 > 70:
+                    s0 = 1
+            if s1 == 0:
+                if r1 < 30:
+                    s1 = -1
+                elif r1 > 70:
+                    s1 = 1
+
+            if s0 != 0:
+                self.left_motor.run(speed * (r0 - 50) / 50 * s0)
+
+            if s1 != 0:
+                self.right_motor.run(speed * (r1 - 50) / 50 * s1)
+
+            if abs(r0 - 50) < 5 and abs(r1 - 50) < 5:
+                break
+
+            await wait(10)
+
+        self.left_motor.hold()
+        self.right_motor.hold()
+
+    def square(self, *args, **kwargs):
+        return run_task(self._square(*args, **kwargs))
+    
+    
