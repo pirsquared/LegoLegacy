@@ -615,10 +615,15 @@ class Bot:
 
         def distance_condition():
             distance_travelled = self.dead_reck() - start
-            return distance_target * direction / distance_travelled > 1
+            return (
+                distance_travelled == 0 or 
+                distance_target * direction / distance_travelled > 1
+            )
+
         
-        while distance_condition():
-            light_error = light_target - await eye.reflection()
+        while distance_condition() and (await eye.hsv()).s < 30:
+            reflection = await eye.reflection()
+            light_error = light_target - reflection
             light_integral = max(min(light_integral + light_error, light_integral_range), -light_integral_range)
             light_derivative = light_error - light_last_error
             light_correction = light_kp * light_error + light_ki * light_integral + light_kd * light_derivative
@@ -634,4 +639,3 @@ class Bot:
 
     def lags(self, *args, **kwargs):
         return run_task(self._lags(*args, **kwargs))
-
