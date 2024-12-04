@@ -609,7 +609,7 @@ class Bot:
         integral = 0
         last_error = 0
         start = self.dead_reck()
-        while abs(distance - (self.dead_reck() - start)) > 1:
+        while distance - (self.dead_reck() - start) > 1:
             error = heading - self.heading()
             integral = max(min(integral + error, integral_range), -integral_range)
             derivative = error - last_error
@@ -648,8 +648,9 @@ class Bot:
         integral = 0
         last_error = 0
         start = self.dead_reck()
+
         while abs(distance - (self.dead_reck() - start)) > 1:
-            error = light - eye.reflection()
+            error = light - await eye.reflection()
             integral = max(min(integral + error, integral_range), -integral_range)
             derivative = error - last_error
             correction = kp * error + ki * integral + kd * derivative
