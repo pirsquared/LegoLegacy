@@ -590,90 +590,48 @@ class Bot:
     def para_lift_drive(self, *args, **kwargs):
         return run_task(self._para_lift_drive(*args, **kwargs))
 
+    async def _lags(
+            self, light_target, heading_target, distance_target, speed,
+            eye_side, line_orientation,
+            light_kp, light_ki, light_kd, light_integral_range,
+            heading_kp, heading_ki, heading_kd, heading_integral_range,
+    ):
+        if eye_side == 'left':
+            eye = self.left_eye
+        else:
+            eye = self.right_eye
 
-    async def _gyro_pid(self, heading, speed, kp, ki, kd, integral_range=100):
-        integral = 0
-        last_error = 0
-        while True:
-            error = heading - self.heading()
-            integral = max(min(integral + error, integral_range), -integral_range)
-            derivative = error - last_error
-            correction = kp * error + ki * integral + kd * derivative
-            self.drive.drive(speed, correction)
-            await wait(10)
-
-    def gyro_pid(self, *args, **kwargs):
-        return run_task(self._gyro_pid(*args, **kwargs))
-    
-    async def _gyro_pid_drive(self, heading, distance, speed, kp, ki, kd, integral_range=100):
-        integral = 0
-        last_error = 0
+        direction = speed / abs(speed)
         start = self.dead_reck()
-        while distance - (self.dead_reck() - start) > 1:
-            error = heading - self.heading()
-            integral = max(min(integral + error, integral_range), -integral_range)
-            derivative = error - last_error
-            correction = kp * error + ki * integral + kd * derivative
-            self.drive.drive(speed, correction)
-            await wait(10)
+        light_integral = 0
+        light_last_error = 0
+        heading_integral = 0
+        heading_last_error = 0
 
-    def gyro_pid_drive(self, *args, **kwargs):
-        return run_task(self._gyro_pid_drive(*args, **kwargs))
-    
-    async def _light_pid(self, light, speed, side, kp, ki, kd, integral_range=100):
-        if side == 'left':
-            eye = self.left_eye
+        if line_orientation == 'bw':
+            line_orientation = 1
         else:
-            eye = self.right_eye
+            line_orientation = -1
 
-        integral = 0
-        last_error = 0
-        while True:
-            error = light - eye.reflection()
-            integral = max(min(integral + error, integral_range), -integral_range)
-            derivative = error - last_error
-            correction = kp * error + ki * integral + kd * derivative
-            self.drive.drive(speed, correction)
+        def distance_condition():
+            distance_travelled = self.dead_reck() - start
+            return distance_target * direction / distance_travelled > 1
+        
+        while distance_condition():
+            light_error = light_target - await eye.reflection()
+            light_integral = max(min(light_integral + light_error, light_integral_range), -light_integral_range)
+            light_derivative = light_error - light_last_error
+            light_correction = light_kp * light_error + light_ki * light_integral + light_kd * light_derivative
+            light_correction *= line_orientation
+
+            heading_error = heading_target - self.heading()
+            heading_integral = max(min(heading_integral + heading_error, heading_integral_range), -heading_integral_range)
+            heading_derivative = heading_error - heading_last_error
+            heading_correction = heading_kp * heading_error + heading_ki * heading_integral + heading_kd * heading_derivative
+
+            self.drive.drive(speed, light_correction + heading_correction)
             await wait(10)
 
-    def light_pid(self, *args, **kwargs):
-        return run_task(self._light_pid(*args, **kwargs))
-    
-    async def _light_pid_drive(self, light, distance, speed, side, kp, ki, kd, integral_range=100):
-        if side == 'left':
-            eye = self.left_eye
-        else:
-            eye = self.right_eye
+    def lags(self, *args, **kwargs):
+        return run_task(self._lags(*args, **kwargs))
 
-        integral = 0
-        last_error = 0
-        start = self.dead_reck()
-
-        while abs(distance - (self.dead_reck() - start)) > 1:
-            error = light - await eye.reflection()
-            integral = max(min(integral + error, integral_range), -integral_range)
-            derivative = error - last_error
-            correction = kp * error + ki * integral + kd * derivative
-            self.drive.drive(speed, correction)
-            await wait(10)
-
-    def light_pid_drive(self, *args, **kwargs):
-        return run_task(self._light_pid_drive(*args, **kwargs))
-    
-    async def _lags(self, light, heading, speed, side, kp, ki, kd, kl, integral_range=100):
-        if side == 'left':
-            eye = self.left_eye
-        else:
-            eye = self.right_eye
-
-        integral = 0
-        last_error = 0
-        while True:
-            error = heading - self.heading()
-            light_error = light - eye.reflection()
-            integral = max(min(integral + error, integral_range), -integral_range)
-            derivative = error - last_error
-            correction = kp * error + ki * integral + kd * derivative + kl * light_error
-            self.drive.drive(speed, correction)
-            await wait(10)
-    
