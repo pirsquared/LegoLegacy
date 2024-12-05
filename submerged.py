@@ -298,8 +298,8 @@ if __name__ == "__main__":
         right_motor=Port.E,
         ring_motor=Port.C,
         lift_motor=Port.D,
-        left_eye=Port.F,
-        right_eye=Port.B,
+        left_eye=Port.B,
+        right_eye=Port.F,
         hub_type=PrimeHub
     )
 
@@ -475,3 +475,111 @@ if __name__ == "__main__":
         i = options.index(selected)
         options = [str((int(j) + i + 1 % len(options))) for j in options]
 
+
+
+#### From other module
+
+from pybricks.hubs import PrimeHub
+from pybricks.parameters import Port, Stop
+from pybricks.tools import multitask, run_task, wait, StopWatch, hub_menu
+from umath import pi, sin, cos, asin, acos
+from LegoLegacy import Bot, clear_console, _CONFIG, curve_get_r_theta_from_x_y
+from LegoLegacy import Motor, ColorSensor
+
+clear_console()
+bot = Bot(
+    left_motor=Port.A,
+    right_motor=Port.E,
+    ring_motor=Port.C,
+    lift_motor=Port.D,
+    left_eye=Port.B,
+    right_eye=Port.F,
+    hub_type=PrimeHub
+)
+
+clear_console()
+
+def pause(msg='', ask=True):
+    print(f'{msg:<30} | H: {bot.heading():8.2f} | R: {bot.ring_angle():8.2f}')
+    bot.what_do_i_see()
+    if ask:
+        p = hub_menu('G', 'S')
+        if p == 'S':
+            run_task(multitask(
+                bot._turn(-bot.heading(), 50),
+                bot._twist_target(-90)
+            ))
+            bot.lift.run_target(100, 0)
+            raise ValueError('Hmm!')
+        else:
+            bot.hub.display.char('@')
+
+
+
+# bot.lags(
+#     light_target=50, heading_target=0, distance_target=500, speed=50,
+#     eye_side='right', line_orientation='wb',
+#     light_kp=1, light_ki=0.01, light_kd=0.5, light_integral_range=100,
+#     heading_kp=0.1, heading_ki=0.01, heading_kd=0.1, heading_integral_range=100,
+# )
+
+# while True:
+#     clear_console()
+#     run_task(bot._what_do_i_see())
+#     run_task(bot.is_black_or_white('right'))
+#     wait(100)
+# run_task(bot._get_off_edge('rignt', -45))
+# run_task(bot._stop_at_edge('right', -180))
+
+# raise SystemExit
+bot.ring.reset_angle(bot.ring.parametric_ratio(90))
+print(bot.ring_angle())
+# raise SystemExit
+run_task(multitask(
+    bot._maintain_ring_orientation(-45),
+    bot._square(100, heading_target=45, creep_factor=0.25),
+    race=True
+))
+bot.twist_target(0)
+bot.straight(distance=20, heading=45, speed=100)
+bot.lift.bump(speed=500, distance=70)
+bot.square(-100)
+bot.twist_target(-45, speed=400)
+run_task(bot._stop_at_edge(eye='right', angle=-45, turn_rate=45, twist=True))
+# pause('am I on the line?')
+run_task(multitask(
+    bot._maintain_ring_orientation(),
+    bot._lags(
+        light_target=50, heading_target=0, distance_target=300, speed=50,
+        eye_side='right', line_orientation='wb',
+        light_kp=1, light_ki=0.01, light_kd=0.05, light_integral_range=100,
+        heading_kp=0.2, heading_ki=0.01, heading_kd=0.01, heading_integral_range=100,
+        stop_at_end_of_line=True
+    ),
+    race=True
+))
+# raise SystemExit
+bot.twist_target(-90)
+bot.turn(-45, turn_rate=45, twist=True)
+bot.straight(distance=85, heading=bot.drive.angle(), speed=100)
+bot.turn(angle=135, turn_rate=90, twist=True)
+bot.twist_target(-60)
+
+bot.straight(distance=10, heading=bot.heading(), speed=200)
+bot.twist_target(0)
+bot.straight(distance=110, heading=bot.drive.angle(), speed=200)
+bot.lift.lift(speed=500, distance=1000)
+bot.straight(-10, bot.heading(), 100)
+
+bot.turn(-90, 45, twist=True)
+bot.twist_target(-75)
+
+# pause('check b4 sweep')
+
+bot.curve(radius=1000, angle=-10, speed=100, twist=True, orientation=-75, then=Stop.NONE)
+# pause('you good')
+bot.curve(radius=750, angle=-20, speed=100, then=Stop.NONE)
+# pause('you good')
+bot.curve(radius=150, angle=-60, speed=100, then=Stop.NONE)
+bot.curve(radius=350, angle=90, speed=100)
+pause('you good')
