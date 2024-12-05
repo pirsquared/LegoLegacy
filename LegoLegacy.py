@@ -144,9 +144,6 @@ class Lift(Motor):
         while abs(self.angle() - target) > self.control.target_tolerances()[1]:
             dl = abs(self.load() * 100 / self.control.limits()[2])
             if dl >= duty_limit:
-                print(f'Attempted {distance}')
-                print(f'Achieved {self.parametric_ratio(self.angle() - lift0)}')
-                print(f'Duty {dl}')
                 self.stop()
                 break
             await wait(10)
@@ -464,7 +461,7 @@ class Bot:
                 self.ring.stop()
                 break
 
-    async def maintain_ring_orientation(self, angle=None, wait_time=10):
+    async def _maintain_ring_orientation(self, angle=None, wait_time=10):
         if angle is None:
             angle = self.ring_angle()
 
@@ -482,7 +479,7 @@ class Bot:
 
             await multitask(
                 turn(angle, turn_rate, **kwargs),
-                self.maintain_ring_orientation(orientation),
+                self._maintain_ring_orientation(orientation),
                 race=True,
             )
 
@@ -497,7 +494,7 @@ class Bot:
 
             await multitask(
                 curve(radius, angle, speed, **kwargs),
-                self.maintain_ring_orientation(orientation),
+                self._maintain_ring_orientation(orientation),
                 race=True,
             )
 
@@ -617,15 +614,17 @@ class Bot:
         def distance_condition():
             distance_travelled = self.dead_reck() - start
             return (
-                distance is None or
+                distance_target is None or
                 distance_travelled == 0 or 
                 distance_target * direction / distance_travelled > 1
             )
         
-        def line_condition():
-            return stop_at_end_of_line and eye.hsv().s < 30
+        async def line_condition():
+            black_white_flag = await self.is_black_or_white(eye)
+            result = stop_at_end_of_line and black_white_flag
+            return result
 
-        while distance_condition() and line_condition():
+        while distance_condition() and await line_condition():
             reflection = await eye.reflection()
             light_error = light_target - reflection
             light_integral = max(min(light_integral + light_error, light_integral_range), -light_integral_range)
@@ -639,37 +638,87 @@ class Bot:
             heading_correction = heading_kp * heading_error + heading_ki * heading_integral + heading_kd * heading_derivative
 
             self.drive.drive(speed, light_correction + heading_correction)
-            await wait(10)
+            await wait(5)
+
+        self.drive.stop()
 
     def lags(self, *args, **kwargs):
         return run_task(self._lags(*args, **kwargs))
     
+    async def is_black(self, eye):
+        if eye == 'left':
+            eye = self.left_eye
+        elif eye == 'right':
+            eye = self.right_eye
+
+        r = await eye.reflection()
+        hsv = await eye.hsv()
+        s = hsv.s
+        v = hsv.v
+        h = hsv.h
+        return r < 20 and s < 20 and v < 40
+
+    async def is_white(self, eye):
+        if eye == 'left':
+            eye = self.left_eye
+        elif eye == 'right':
+            eye = self.right_eye
+
+        r = await eye.reflection()
+        hsv = await eye.hsv()
+        s = hsv.s
+        v = hsv.v
+        h = hsv.h
+        return r > 80 and s < 10 and v > 90 and h < 10
+
+    async def is_black_or_white(self, eye, *args, **kwargs):
+        black_flag = await self.is_black(eye, *args, **kwargs)
+        white_flag = await self.is_white(eye, *args, **kwargs)
+        if eye == 'left':
+            eye = self.left_eye
+        elif eye == 'right':
+            eye = self.right_eye
+
+        hsv = await eye.hsv()
+        saturation = hsv.s
+
+        result = black_flag or white_flag or saturation < 25
+        return result
+
+    async def _what_do_i_see(self):
+        lr = await self.left_eye.reflection()
+        rr = await self.right_eye.reflection()
+        lh = await self.left_eye.hsv()
+        rh = await self.right_eye.hsv()
+        print(lr, lh, rr, rh)
+
+    def what_do_i_see(self):
+        return run_task(self._what_do_i_see())
+
     async def _catch_line(self):
 
         while True:
             left_reflection = await self.left_eye.reflection()
             right_reflection = await self.right_eye.reflection()
-            if not 30 < left_reflection < 70:
-                return 'left', left_reflection
-            if not 30 < right_reflection < 70:
-                return 'right', right_reflection
+            left_hsv = await self.left_eye.hsv()
+            right_hsv = await self.right_eye.hsv()
+
+            for side in ['left', 'right']:
+                if await self.is_black(side):
+                    return side, 'black'
+                if await self.is_white(side):
+                    return side, 'white'
             await wait(10)
 
-    async def _square(self, speed, heading_target=None):
+    async def _square(self, speed, heading_target=None, creep_factor=1):
         if heading_target is None:
             heading_target = self.heading()
 
         await multitask(
-            self._lags(
-                light_target=50, heading_target=heading_target, distance_target=None,
-                speed=speed, eye_side='left', line_orientation='fw',
-                light_kp=0, light_ki=0, light_kd=0, light_integral_range=100,
-                heading_kp=2, heading_ki=0.05, heading_kd=0.5, heading_integral_range=100
-            ),
+            self._straight(2000 * speed / abs(speed), heading=heading_target, speed=abs(speed)),
             self._catch_line(),
             race=True
         )
-        self.drive.stop()
 
         s0, s1 = 0, 0
 
@@ -690,12 +739,12 @@ class Bot:
                     s1 = 1
 
             if s0 != 0:
-                self.left_motor.run(speed * (r0 - 50) / 50 * s0)
+                self.left_motor.run(speed * creep_factor * (r0 - 50) / 50 * s0)
 
             if s1 != 0:
-                self.right_motor.run(speed * (r1 - 50) / 50 * s1)
+                self.right_motor.run(speed * creep_factor * (r1 - 50) / 50 * s1)
 
-            if abs(r0 - 50) < 5 and abs(r1 - 50) < 5:
+            if abs(r0 - 50) < 15 and abs(r1 - 50) < 15:
                 break
 
             await wait(10)
@@ -706,4 +755,43 @@ class Bot:
     def square(self, *args, **kwargs):
         return run_task(self._square(*args, **kwargs))
     
-    
+    async def _find_edge(self, eye):
+        if eye == 'left':
+            eye = self.left_eye
+        elif eye == 'right':
+            eye = self.right_eye
+
+        while not await self.is_black_or_white(eye):
+            await wait(10)
+
+        reflection = await eye.reflection()
+        while abs(50 - reflection) > 10:
+            reflection = await eye.reflection()
+            await wait(10)
+
+    async def _stop_at_edge(self, eye, angle=180, turn_rate=45, *args, **kwargs):
+        if await self.is_black_or_white(eye):
+            await self._get_off_edge(eye, angle, turn_rate, *args, **kwargs)
+
+        await multitask(
+            self._turn(angle, turn_rate, *args, **kwargs),
+            self._find_edge(eye),
+            race=True
+        )
+
+    async def _get_off_edge(self, eye, angle=180, turn_rate=45, *args, **kwargs):
+        
+        async def _off():
+            while await self.is_black_or_white(eye):
+                await wait(10)
+
+        await multitask(
+            self._turn(angle, turn_rate, *args, **kwargs),
+            _off(),
+            race=True,            
+        )
+        
+            
+
+        
+            
