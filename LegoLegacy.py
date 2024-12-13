@@ -682,7 +682,7 @@ class Bot:
         hsv = await eye.hsv()
         saturation = hsv.s
 
-        result = black_flag or white_flag or saturation < 25
+        result = black_flag or white_flag or saturation < 30
         return result
 
     async def _what_do_i_see(self):
@@ -765,7 +765,7 @@ class Bot:
             await wait(10)
 
         reflection = await eye.reflection()
-        while abs(50 - reflection) > 10:
+        while abs(50 - reflection) > 20:
             reflection = await eye.reflection()
             await wait(10)
 
