@@ -175,74 +175,55 @@ class GameBot(Bot):
         ue_angle = -45  # unexpected encounter angle
 
         # turn to get krill and "Unexpected Encounter"
-        self.turn(ue_angle, turn_rate=180, twist=True, orientation=-(90+ue_angle+10))
-        self.straight(160, ue_angle, 200)
-        run_task(multitask(
+        # gatherer positioned offset slightly to the right to ensure krill is caught
+        self.turn(ue_angle, turn_rate=180, twist=True, orientation=-(90+ue_angle+10))  # turn to position for krill #1
+        self.straight(160, ue_angle, 200)  # proceed to get krill #1
+        run_task(multitask(  # continue towards "Unexpected Encounter" while reposistioning ring after krill #1 is caught
             self._straight(160, ue_angle, 120),
             self._twist_target(-90)
         ))
 
         # Back off and curve to the right
-        self.straight(-76, ue_angle, 200)
+        self.straight(-76, ue_angle, 200)  # back off of "Unexpected Encounter"
         self.curve(90, 90, 200, twist=True)  # puts me right in front of "Change Shipping Lanes"
-        # self.twist_target(-60)  # secure coral
-        # self.twist_target(0)
-
         self.straight(72, 45, 50, gain=4)  # place forklift under "Change Shipping Lanes" model
         self.turn(-45 - self.heading(), turn_rate=90, twist=True)  # turn to right
         self.para_lift_drive(lift_f, drive_r, n=50, wait_time=20)  # trace semi-circle
         wait(200)  # make sure para_lift_drive is done
         self.turn(45 - self.heading(), turn_rate=90, twist=True)  # turn back to perpendicular
-
-        #  Begin edit
-        self.straight(-120, 45, 200)  # back off
-
+        self.straight(-120, 45, 200)  # back off of "Change Shipping Lanes"
         self.liftup(64, wait=False)  # lift up to get out of the way of things on the ground
         self.turn(0 - self.heading(), turn_rate=200, twist=True, orientation=-45)  # turn north
-        self.straight(164, 0, 400)  # charge forward to get krill
-
-        self.pause('How to get sample?', False)
-        self.twist_target(-145, speed=1000)
+        # Plan to gather coral #1, krill #2, and krill #3
+        self.straight(164, 0, 400)  # charge forward
+        self.twist_target(-145, speed=1000)  # twist to snag "Plankton Sample"
         self.twist_target(-100, speed=200)
-
-        self.pause('nab krill', False)
-        self.straight(55, 0, 400)
-        run_task(multitask(
+        self.straight(55, 0, 400)  # Position for krill #2 and krill #3
+        run_task(multitask(       # maneuver to get krill #2 and krill #3
             self._curve(radius=-20, angle=90, speed=300),
             self._twist_target(-90)
         ))
-
-        self.turn(-90-self.heading(), turn_rate=50)
-        self.pause('make sure I get to right spot', False)
-
-        radius, theta = curve_get_r_theta_from_x_y(145, 505)
-        self.curve(radius=radius, angle=theta, speed=300, twist=True)
-
-        self.pause('Close enuf 2 sub?', False)
-
-        run_task(multitask(
+        self.turn(-90-self.heading(), turn_rate=50)  # face west, prepare for submersible
+        radius, theta = curve_get_r_theta_from_x_y(145, 505)  # calcu late curve to submersible
+        self.curve(radius=radius, angle=theta, speed=300, twist=True) # curve to submersible
+        run_task(multitask( # get ready to square up to the submersible
             self._maintain_ring_orientation(self.heading()+45),
             self._square(100, heading_target=-45, creep_factor=0.25),
             race=True
         ))
-        self.twist_target(0)
-
-        self.pause('did I square', False)
-        self.straight(distance=20, heading=-45, speed=100)
-        self.lift.bump(speed=500, distance=70)
-        run_task(multitask(
+        self.twist_target(0) # ensure ring is aligned with forward direction
+        self.straight(distance=20, heading=-45, speed=100)  # get close to submersible
+        self.lift.bump(speed=500, distance=70)  # lift submersible
+        run_task(multitask(  #  back off of submersible and re-square
             self._maintain_ring_orientation(self.heading()),
             self._square(-100, heading_target=-45, creep_factor=0.25),
             race=True
         ))
-        self.pause('did I square again', False)
-        self.turn(-30, turn_rate=90, twist=True, orientation=self.heading())
-        self.twist_target(self.heading(), speed=400)
-        self.pause('Should be facing East', False)
-        run_task(self._stop_at_edge(eye='right', angle=-90,
+        self.turn(-30, turn_rate=90, twist=True, orientation=self.heading())  # turn a little to position for line following
+        self.twist_target(self.heading(), speed=400)  # twist to place gatherer west
+        run_task(self._stop_at_edge(eye='right', angle=-90,  # catch the line
             turn_rate=30, twist=True, orientation=self.heading()))
-        self.pause('rdy for follow?', False)
-        run_task(multitask(
+        run_task(multitask(  # follow line to "Angler Fish"
             self._maintain_ring_orientation(),
             self._lags(
                 light_target=50, heading_target=-90, distance_target=300, speed=50,
@@ -253,34 +234,28 @@ class GameBot(Bot):
             ),
             race=True
         ))
-        self.what_do_i_see()
-        self.pause('did I follow', False)
-        self.twist_target(-90)
-        self.turn(-45, turn_rate=90, twist=True)
-        self.straight(distance=80, heading=-135, speed=200)
-        self.pause('destroy?', False)
-        run_task(multitask(
+        # after following the line, we should know exactly where we are at
+        self.twist_target(-90)  # ensure the gatherer is facing west with forward direction
+        self.turn(-45, turn_rate=90, twist=True)  # turn to position for "Angler Fish"
+        self.straight(distance=80, heading=-135, speed=200)  # approach "Angler Fish"
+        run_task(multitask(  # maneuver to engage "Angler Fish"
             self._turn(angle=0-self.heading(), turn_rate=120),
             self._twist_target(-45)
         ))
-        self.pause('after angler', False)
-        self.straight(distance=10, heading=0, speed=200)
-        self.twist_target(0)
-        self.straight(distance=64, heading=0, speed=300)
-        self.pause('At Bed Sample?', False)
-        self.lift.lift(speed=500, distance=1000)
-        self.straight(-10, self.heading(), 200)
+        self.straight(distance=10, heading=0, speed=200) # create space between robot and "Angler Fish"
+        self.twist_target(0)  # position ring for "Sea Floor Sample"
+        self.straight(distance=64, heading=0, speed=300)  # approach "Sea Floor Sample"
+        self.lift.lift(speed=500, distance=1000)  # lift "Sea Floor Sample"
+        self.straight(-10, self.heading(), 200)  # back off of "Sea Floor Sample"
+        self.turn(-90, 90, twist=True) # turn to prepare for last pass
+        self.twist_target(-75)  # twist to gather water sample
 
-        self.turn(-90, 90, twist=True)
-        self.twist_target(-75)
-
+        # Gather water sample, two coral, and one more krill and go home
         self.curve(radius=900, angle=-10, speed=300, twist=True, orientation=-75, then=Stop.NONE)
         self.curve(radius=750, angle=-20, speed=300, then=Stop.NONE)
         self.curve(radius=150, angle=-60, speed=300, then=Stop.NONE)
         self.curve(radius=350, angle=80, speed=300)
 
-
-        self.pause('reset me')
 
     def phase1(self):
         """
@@ -324,8 +299,6 @@ class GameBot(Bot):
         self.turn(angle=0-self.heading(), turn_rate=90, twist=True)     # Head Home
         self.curve(radius=-300, angle=-60, speed=300, then=Stop.NONE)
         self.curve(radius=-300, angle=60, speed=300)
-        
-        self.pause('end')
 
     def phase2(self):
         """
@@ -339,102 +312,73 @@ class GameBot(Bot):
 
         fast_speed = 200
         slow_speed = 100
-        run_task(multitask(
+        run_task(multitask( # approach reef
             self._straight(distance=200, heading=0, speed=fast_speed),
             self.lift._lift(distance=72, speed=500)
         ))
+        # using dead reckoning to get to the reef
+        # in order to reduce accumulated error
         sum_y = self.dead_reck()
         self.turn(angle=30-self.heading(), turn_rate=90)
         self.straight(distance=dx*2, heading=30, speed=fast_speed)
         sum_y += (self.dead_reck() - sum_y) * sqrt(3) / 2
         self.turn(angle=0-self.heading(), turn_rate=90)
         self.straight(distance=dy-sum_y, heading=0, speed=fast_speed)
-        self.pause('@reef1', False)
-        self.lift.bump(distance=-32, speed=500)
-
-        self.curve(radius=-self.wheel_base/2, angle=90, speed=fast_speed)
-
-        self.straight(distance=120, heading=-90, speed=fast_speed),
-        self.pause('@shark', False)
-
-        self.lift.bump(distance=-90, speed=500)
-
-        self.lift.lift(distance=65, speed=500)
-
-        self.turn(angle=-100-self.heading(), turn_rate=90)
-
-        self.pause('@diver', False)
-
-        self.straight(distance=20, heading=-95, speed=fast_speed)
-
-        self.lift.lift(distance=24, speed=500)
-
-        self.curve(radius=-self.wheel_base/2, angle=-42+self.heading(), speed=fast_speed)
-        self.pause('@@reef', False)
-        self.straight(distance=104, heading=45, speed=fast_speed)
-
-        self.pause('@reef', False)
-
-        self.lift.lift(distance=-32, speed=500)
+        self.lift.bump(distance=-32, speed=500)  # smack the reef
+        self.curve(radius=-self.wheel_base/2, angle=90, speed=fast_speed)  # curve to shark: right wheel should stay in place
+        self.straight(distance=120, heading=-90, speed=fast_speed)  # approach shark
+        self.lift.bump(distance=-90, speed=500)  # smack the shark
+        self.lift.lift(distance=65, speed=500)  # position for diver
+        self.turn(angle=-100-self.heading(), turn_rate=90)  # turn to diver
+        self.straight(distance=20, heading=-95, speed=fast_speed)  # approach diver
+        self.lift.lift(distance=24, speed=500)  # pick up diver
+        self.curve(radius=-self.wheel_base/2, angle=-42+self.heading(), speed=fast_speed) # curve to drop off diver
+        self.straight(distance=104, heading=45, speed=fast_speed)  # approach drop off
+        self.lift.lift(distance=-32, speed=500)  # drop diver
         wait(200)
-
-        self.straight(distance=-50, heading=45, speed=fast_speed)
-        self.straight(distance=-700, heading=0, speed=fast_speed)
-
-        self.pause('end')
+        self.straight(distance=-50, heading=45, speed=fast_speed)  # back off diver
+        self.straight(distance=-700, heading=0, speed=fast_speed)  # head home
 
     def phase3(self):
+        """Quick bump of equipment to dump gathered items in "Research Vessel"
+        """
         self.straight(distance=-100, heading=0, speed=300)
         wait(500)
         self.straight(distance=50, heading=0, speed=300)
 
     def phase4(self):
+        """Need to get back to other side of field with gathered krill.  However, we
+        still need to gather one more krill and drop off shark"""
         shark_angle = 67
-        self.curve(radius=self.wheel_base/2, angle=shark_angle, speed=300)
-        self.straight(distance=500, heading=shark_angle, speed=300)
-        self.lift.lift(distance=52, speed=500)
-        self.straight(distance=-120, heading=shark_angle, speed=300)
-        self.turn(angle=-40, turn_rate=90)
-        self.lift.lift(distance=-52, speed=500)
-        self.turn(angle=100-self.heading(), turn_rate=90)
-        self.straight(distance=1000, heading=95, speed=500)
-        self.pause('end')
+        self.curve(radius=self.wheel_base/2, angle=shark_angle, speed=300)  # curve to get off of wall
+        self.straight(distance=500, heading=shark_angle, speed=300)  # head to shark drop off
+        self.lift.lift(distance=52, speed=500)  # drop off shark
+        self.straight(distance=-120, heading=shark_angle, speed=300)  # back up to pick up krill
+        self.turn(angle=-40, turn_rate=90)  # turn to pick up krill
+        self.lift.lift(distance=-52, speed=500)  # pick up krill
+        self.turn(angle=100-self.heading(), turn_rate=90)  # turn to head home
+        self.straight(distance=1000, heading=95, speed=500)  # head home
 
     def phase5(self):
-        self.straight(distance=100, heading=0, speed=300)
-        run_task(multitask(
+        """Feed the whale"""
+        self.straight(distance=100, heading=0, speed=300)  # can't start with attachment facing foward so we need to go forward a bit then twist
+        run_task(multitask(  # twist to face the whale and continue forward
             self._straight(distance=516, heading=0, speed=300),
             self._twist_target(angle=45)
         ))
-        self.turn(angle=45, turn_rate=90)
-        self.straight(distance=80, heading=45, speed=300)
-        self.straight(distance=100, heading=45, speed=50)
-        wait(500)
-        self.straight(distance=-192, heading=45, speed=300)
-        self.turn(angle=-45, turn_rate=90)
-        self.straight(distance=-500, heading=0, speed=200)
-        run_task(multitask(
+        self.turn(angle=45, turn_rate=90)  # turn to face the whale
+        self.straight(distance=80, heading=45, speed=300)  # approach the whale
+        self.straight(distance=100, heading=45, speed=50)  # feed the whale
+        wait(500)  # wait for the whale to eat
+        self.straight(distance=-192, heading=45, speed=300)  # back off of the whale
+        self.turn(angle=-45, turn_rate=90)  # turn to head home
+        self.straight(distance=-500, heading=0, speed=200)  # head home
+        run_task(multitask(  # twist to face the home area
             self._straight(distance=-375, heading=0, speed=300),
             self._twist_target(angle=0)
         ))
 
         self.pause('end')
-
-    def old_phase4(self):
-        self.curve(radius=110, angle=90, speed=100)
-        self.straight(distance=400, heading=90, speed=100)
-        self.turn(angle=45-self.heading(), turn_rate=45, twist=True)
-        self.straight(distance=150, heading=45, speed=200)
-        self.turn(angle=0-self.heading(), turn_rate=90, twist=True)
-        self.straight(distance=-110, heading=0, speed=100)
-        self.turn(angle=90-self.heading(), turn_rate=90, twist=True)
-        self.pause('boat')
-        kp, ki, kd, int_d, int_r = self.drive.heading_control.pid()
-        self.drive.heading_control.pid(kp, 100, kd, int_d, int_r)
-        self.straight(distance=950, heading=90, speed=500)
-        self.drive.heading_control.pid(kp, ki, kd, int_d, int_r)
-        self.pause('end')
-
 
 
 
@@ -461,6 +405,7 @@ if __name__ == "__main__":
     selected = hub_menu(*options, 'X')
     try:
         programs[selected]()
+        bot.pause('End')
     except (SystemExit, TypeError, AttributeError) as e:
         bot.drive.stop()
         bot.ring.stop()
